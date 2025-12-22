@@ -132,13 +132,15 @@ class SFTTrainer(ABC):
 
             # train
             self.model.train()
-            for inputs, attention_masks, loss_masks in self.train_dataloader:
+            for inputs, attention_masks, loss_masks, token_type_ids in self.train_dataloader:
                 inputs = inputs.to(torch.cuda.current_device()).squeeze(1)
                 attention_mask = attention_masks.to(torch.cuda.current_device()).squeeze(1)
                 loss_mask = loss_masks.to(torch.cuda.current_device()).squeeze(1)
+                token_type_id = token_type_ids.to(torch.cuda.current_device()).squeeze(1)
                 per_token_log_probs, output = self.model(
                     inputs,
                     attention_mask=attention_mask,
+                    token_type_ids=token_type_id,
                     return_output=True,
                     return_logprobs=True,
                     ring_attn_group=self.strategy.ring_attn_group,
@@ -224,13 +226,15 @@ class SFTTrainer(ABC):
                 disable=not self.strategy.is_rank_0(),
             )
 
-            for inputs, attention_masks, loss_masks in eval_dataloader:
+            for inputs, attention_masks, loss_masks, token_type_ids in eval_dataloader:
                 inputs = inputs.to(torch.cuda.current_device()).squeeze(1)
                 attention_mask = attention_masks.to(torch.cuda.current_device()).squeeze(1)
                 loss_mask = loss_masks.to(torch.cuda.current_device()).squeeze(1)
+                token_type_id = token_type_ids.to(torch.cuda.current_device()).squeeze(1)
                 per_token_log_probs = self.model(
                     inputs,
                     attention_mask=attention_mask,
+                    token_type_ids=token_type_id,
                     return_logprobs=True,
                     ring_attn_group=self.strategy.ring_attn_group,
                 )
