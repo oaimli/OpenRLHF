@@ -168,15 +168,15 @@ class BasePPOTrainer(ABC):
         if global_step % args.logging_steps == 0:
             # wandb
             if self._wandb is not None:
-                # Add generated samples to wandb using Table
-                if "generated_samples" in logs_dict:
-                    # https://github.com/wandb/wandb/issues/2981#issuecomment-1997445737
-                    new_table = self._wandb.Table(
-                        columns=self.generated_samples_table.columns, data=self.generated_samples_table.data
-                    )
-                    new_table.add_data(global_step, *logs_dict.pop("generated_samples"))
-                    self.generated_samples_table = new_table
-                    self._wandb.log({"train/generated_samples": new_table})
+                # # Add generated samples to wandb using Table
+                # if "generated_samples" in logs_dict:
+                #     # https://github.com/wandb/wandb/issues/2981#issuecomment-1997445737
+                #     new_table = self._wandb.Table(
+                #         columns=self.generated_samples_table.columns, data=self.generated_samples_table.data
+                #     )
+                #     new_table.add_data(global_step, *logs_dict.pop("generated_samples"))
+                #     self.generated_samples_table = new_table
+                #     self._wandb.log({"train/generated_samples": new_table})
                 logs = {
                     "train/%s" % k: v
                     for k, v in {
