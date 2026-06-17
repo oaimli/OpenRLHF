@@ -87,18 +87,18 @@ def compute_eval_metrics(eval_dataloader, samples_list, n_samples_per_prompt):
     if not samples_list:
         return {}
 
-    prompt_to_datasource = {}
-    for datasources, prompts, labels, _images in eval_dataloader:
-        for prompt, datasource in zip(prompts, datasources):
-            prompt_to_datasource[prompt] = datasource
+    prompt_full_to_datasource = {}
+    for datasources, prompts_proxy, prompts_full, labels, _images in eval_dataloader:
+        for prompt_full, datasource in zip(prompts_full, datasources):
+            prompt_full_to_datasource[prompt_full] = datasource
 
     # Single pass: collect prompts, rewards, response_length, truncated
-    all_prompts = []
+    all_prompts_full = []
     all_rewards = []
     all_response_lengths = []
     all_truncated = []
     for s in samples_list:
-        all_prompts.extend(s.prompts)
+        all_prompts_full.extend(s.prompts_full)
         all_rewards.append(s.rewards)
         all_response_lengths.append(s.response_length.item() if s.response_length is not None else None)
         all_truncated.append(s.truncated.item() if s.truncated is not None else None)
@@ -106,8 +106,8 @@ def compute_eval_metrics(eval_dataloader, samples_list, n_samples_per_prompt):
     rewards = torch.tensor(all_rewards).reshape(-1, n_samples_per_prompt)
 
     metrics = {}
-    for i in range(len(all_prompts) // n_samples_per_prompt):
-        ds = prompt_to_datasource.get(all_prompts[i * n_samples_per_prompt], "unknown")
+    for i in range(len(all_prompts_full) // n_samples_per_prompt):
+        ds = prompt_full_to_datasource.get(all_prompts_full[i * n_samples_per_prompt], "unknown")
         if ds not in metrics:
             metrics[ds] = {f"pass{n_samples_per_prompt}": 0, "pass1": 0, "count": 0, "lengths": [], "truncated": []}
         chunk = rewards[i]
@@ -140,7 +140,7 @@ def compute_eval_metrics(eval_dataloader, samples_list, n_samples_per_prompt):
         logs["eval_response_length_mean"] = sum(total_lengths) / len(total_lengths)
     if total_truncated:
         logs["eval_truncated_rate"] = sum(total_truncated) / len(total_truncated)
-    logs["eval_num_samples"] = float(len(all_prompts))
+    logs["eval_num_samples"] = float(len(all_prompts_full))
 
     return logs
 
