@@ -417,6 +417,7 @@ if __name__ == "__main__":
     parser.add_argument("--algo.kl.target", type=float, default=None)
     parser.add_argument("--algo.kl.horizon", type=int, default=10000)
     parser.add_argument("--algo.kl.init_coef", type=float, default=0.01, help="KL penalty in PPO")
+    parser.add_argument("--algo.kl.distillation_coef", type=float, default=1.0, help="KL divergence for on-policy distillation")
     parser.add_argument("--actor.policy_loss_type", type=str, default="ppo", choices=["ppo", "gspo"])
     parser.add_argument(
         "--algo.kl.estimator",
@@ -539,7 +540,8 @@ if __name__ == "__main__":
         "--eval.n_samples_per_prompt", type=int, default=4, help="Number of samples per prompt for evaluation"
     )
 
-    parser.add_argument("--data.input_key", type=str, default="input", help="JSON dataset key")
+    parser.add_argument("--data.input_key_proxy", type=str, default="proxy", help="JSON dataset key for short proxy contexts")
+    parser.add_argument("--data.input_key_full", type=str, default="full", help="JSON dataset key for full long contexts")
     parser.add_argument("--data.label_key", type=str, default=None, help="JSON dataset key")
     parser.add_argument("--data.input_template", type=str, default=None)
     parser.add_argument(
