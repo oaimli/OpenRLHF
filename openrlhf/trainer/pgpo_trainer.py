@@ -8,12 +8,12 @@ import ray
 import torch
 from tqdm import tqdm
 
-from openrlhf.datasets import PromptDataset
+from openrlhf.datasets import MixDataset
 from openrlhf.datasets.utils import blending_datasets
 from openrlhf.trainer.ppo_utils.experience import balance_experiences
 from openrlhf.trainer.ppo_utils.experience_maker import RemoteExperienceMaker
 from openrlhf.trainer.ppo_utils.kl_controller import AdaptiveKLController, FixedKLController
-from openrlhf.trainer.ppo_utils.samples_generator import SamplesGenerator
+from openrlhf.trainer.ppo_utils.mix_generator import SamplesGenerator
 from openrlhf.trainer.ray.launcher import RayActorGroup
 from openrlhf.trainer.ray.vllm_engine import batch_vllm_engine_call
 from openrlhf.utils.deepspeed import DeepspeedStrategy
@@ -38,13 +38,13 @@ def prepare_datasets(strategy, tokenizer):
 
     # Create train dataset
     train_data = train_data.select(range(min(args.data.max_samples, len(train_data))))
-    prompts_dataset = PromptDataset(train_data, tokenizer, strategy, input_template=args.data.input_template)
-    prompts_dataloader = strategy.setup_dataloader(
-        prompts_dataset,
+    train_dataset = MixDataset(train_data, tokenizer, strategy, input_template=args.data.input_template)
+    train_dataloader = strategy.setup_dataloader(
+        train_dataset,
         1,
         True,
         True,
-        prompts_dataset.collate_fn,
+        train_dataset.collate_fn,
         num_workers=args.data.dataloader_num_workers,
     )
 
@@ -57,7 +57,7 @@ def prepare_datasets(strategy, tokenizer):
             dataset_split=args.eval.split,
         )
         eval_data = eval_data.select(range(min(args.data.max_samples, len(eval_data))))
-        eval_dataset = PromptDataset(eval_data, tokenizer, strategy, input_template=args.data.input_template)
+        eval_dataset = MixDataset(eval_data, tokenizer, strategy, input_template=args.data.input_template)
         eval_dataloader = strategy.setup_dataloader(
             eval_dataset,
             1,
@@ -70,13 +70,13 @@ def prepare_datasets(strategy, tokenizer):
         eval_dataloader = None
 
     max_steps = (
-        len(prompts_dataset)
+        len(train_dataset)
         * args.rollout.n_samples_per_prompt
         // args.train.batch_size
         * args.train.num_episodes
         * args.train.max_epochs
     )
-    return prompts_dataloader, eval_dataloader, max_steps
+    return train_dataloader, eval_dataloader, max_steps
 
 
 def compute_eval_metrics(eval_dataloader, samples_list, n_samples_per_prompt):
@@ -88,7 +88,7 @@ def compute_eval_metrics(eval_dataloader, samples_list, n_samples_per_prompt):
         return {}
 
     prompt_full_to_datasource = {}
-    for datasources, prompts_proxy, prompts_full, labels, _images in eval_dataloader:
+    for datasources, _, prompts_full, _, _images in eval_dataloader:
         for prompt_full, datasource in zip(prompts_full, datasources):
             prompt_full_to_datasource[prompt_full] = datasource
 
@@ -470,13 +470,13 @@ class PPOTrainer(BasePPOTrainer):
         tokenizer = get_tokenizer(
             pretrain, None, "left", strategy, use_fast=not strategy.args.data.disable_fast_tokenizer
         )
-        self.prompts_dataloader, self.eval_dataloader, self.max_steps = prepare_datasets(strategy, tokenizer)
+        self.train_dataloader, self.eval_dataloader, self.max_steps = prepare_datasets(strategy, tokenizer)
         self.generate_kwargs = generate_kwargs
 
         # sample generation
         self.samples_generator = SamplesGenerator(
             strategy=strategy,
-            prompts_dataloader=self.prompts_dataloader,
+            train_dataloader=self.train_dataloader,
             eval_dataloader=self.eval_dataloader,
             tokenizer=tokenizer,
             vllm_engines=vllm_engines,
@@ -511,10 +511,10 @@ class PPOTrainer(BasePPOTrainer):
             self.broadcast_to_vllm()
             state_dict = checkpoint_states["data_loader_state_dict"]
             if state_dict:
-                self.prompts_dataloader.load_state_dict(state_dict)
+                self.train_dataloader.load_state_dict(state_dict)
 
         for episode in range(start_episode, self.args.train.num_episodes):
-            dataset_length = len(self.prompts_dataloader)
+            dataset_length = len(self.train_dataloader)
             pbar = tqdm(
                 range(dataset_length),
                 desc=f"Episode [{episode + 1}/{self.args.train.num_episodes}]",
@@ -524,7 +524,7 @@ class PPOTrainer(BasePPOTrainer):
                 # Draw one mini-batch of prompts; stop when loader is exhausted.
                 t_gen_start = time.time()
                 rollout_samples, filter_pass_rate, prompts_consumed, is_exhausted = (
-                    self.samples_generator.generate_samples(**self.generate_kwargs)
+                    self.samples_generator.generate_train_samples(**self.generate_kwargs)
                 )
                 generation_time = time.time() - t_gen_start
                 total_consumed_prompts += prompts_consumed
@@ -549,7 +549,7 @@ class PPOTrainer(BasePPOTrainer):
                     "episode": episode,
                     "global_step": global_step,
                     "total_consumed_prompts": total_consumed_prompts,
-                    "data_loader_state_dict": self.prompts_dataloader.state_dict(),
+                    "data_loader_state_dict": self.train_dataloader.state_dict(),
                 }
                 self.save_logs_and_checkpoints(global_step, status, client_states)
 
