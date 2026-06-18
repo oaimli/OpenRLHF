@@ -87,10 +87,10 @@ def compute_eval_metrics(eval_dataloader, samples_list, n_samples_per_prompt):
     if not samples_list:
         return {}
 
-    prompt_to_datasource = {}
-    for datasources, prompts, labels, _images in eval_dataloader:
-        for prompt, datasource in zip(prompts, datasources):
-            prompt_to_datasource[prompt] = datasource
+    prompt_full_to_datasource = {}
+    for datasources, prompts_proxy, prompts_full, labels, _images in eval_dataloader:
+        for prompt_full, datasource in zip(prompts_full, datasources):
+            prompt_full_to_datasource[prompt_full] = datasource
 
     # Single pass: collect prompts, rewards, response_length, truncated
     all_prompts = []
@@ -107,7 +107,7 @@ def compute_eval_metrics(eval_dataloader, samples_list, n_samples_per_prompt):
 
     metrics = {}
     for i in range(len(all_prompts) // n_samples_per_prompt):
-        ds = prompt_to_datasource.get(all_prompts[i * n_samples_per_prompt], "unknown")
+        ds = prompt_full_to_datasource.get(all_prompts[i * n_samples_per_prompt], "unknown")
         if ds not in metrics:
             metrics[ds] = {f"pass{n_samples_per_prompt}": 0, "pass1": 0, "count": 0, "lengths": [], "truncated": []}
         chunk = rewards[i]
