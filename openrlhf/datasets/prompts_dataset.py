@@ -99,8 +99,8 @@ class PromptDataset(Dataset):
         self.datasources = []
         for data in tqdm(dataset, desc="Preprocessing data", disable=not self.strategy.is_rank_0()):
             prompt_proxy, prompt_full, label = preprocess_data(data, input_template, input_key_proxy, input_key_full, label_key, apply_chat_template)
-            self.prompts.append(prompt_proxy)
-            self.prompts.append(prompt_full)
+            self.prompts_proxy.append(prompt_proxy)
+            self.prompts_full.append(prompt_full)
             self.labels.append(label)
             self.images.append(data.get(self.image_key, None))
             self.datasources.append(data.get("datasource", "default"))
