@@ -470,13 +470,13 @@ class PPOTrainer(BasePPOTrainer):
         tokenizer = get_tokenizer(
             pretrain, None, "left", strategy, use_fast=not strategy.args.data.disable_fast_tokenizer
         )
-        self.prompts_dataloader, self.eval_dataloader, self.max_steps = prepare_datasets(strategy, tokenizer)
+        self.train_dataloader, self.eval_dataloader, self.max_steps = prepare_datasets(strategy, tokenizer)
         self.generate_kwargs = generate_kwargs
 
         # sample generation
         self.samples_generator = SamplesGenerator(
             strategy=strategy,
-            prompts_dataloader=self.prompts_dataloader,
+            train_dataloader=self.train_dataloader,
             eval_dataloader=self.eval_dataloader,
             tokenizer=tokenizer,
             vllm_engines=vllm_engines,
