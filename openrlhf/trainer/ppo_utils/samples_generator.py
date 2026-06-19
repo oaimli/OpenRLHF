@@ -20,7 +20,7 @@ def _collect_prompt_batch(dataloader_iter, num_prompts: int):
     collecting the returned prompts. Callers should still process any partial
     batch that was collected before exhaustion.
     """
-    prompts_proxy, prompts_full, labels, images = [], [], []
+    prompts_proxy, prompts_full, labels, images = [], [], [], []
     exhausted = False
 
     while len(prompts_proxy) < num_prompts:
