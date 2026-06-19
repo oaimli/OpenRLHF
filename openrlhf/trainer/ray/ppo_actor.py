@@ -326,7 +326,7 @@ class ActorPPOTrainer(ABC):
             return_entropy=self.args.actor.entropy_coef is not None,
             **mm_inputs,
         )
-        log_ratio = action_log_probs.masked_select(action_mask).detach() - action_log_probs_full.masked_select(action_mask_full)
+        log_ratio = action_log_probs[action_mask == 1].detach() - action_log_probs_full[action_mask_full == 1]
         kd_loss = -log_ratio.mean()
             
         loss = actor_loss + kl_loss * kl_ctl + kd_coef * kd_loss
