@@ -311,7 +311,7 @@ class ActorPPOTrainer(ABC):
         else:
             kl_loss = 0
         
-        # TODO needs more work
+        # knowledge distillation loss
         kd_coef = self.args.algo.distil.kd_coef
         sequences_full = experience.sequences_full
         attention_mask_full = experience.attention_mask_full
@@ -326,8 +326,8 @@ class ActorPPOTrainer(ABC):
             return_entropy=self.args.actor.entropy_coef is not None,
             **mm_inputs,
         )
-        log_ratio = action_log_probs - action_log_probs_full
-        kd_loss = masked_mean(-log_ratio, action_mask, dim=None)
+        log_ratio = action_log_probs.masked_select(action_mask).detach() - action_log_probs_full.masked_select(action_mask_full)
+        kd_loss = -log_ratio.mean()
             
         loss = actor_loss + kl_loss * kl_ctl + kd_coef * kd_loss
         # mixtral

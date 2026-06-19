@@ -38,20 +38,20 @@ class Experience:
     """
 
     # ── Trajectory: state-action sequences ──
-    sequences: torch.Tensor = tensor_field("step", default=None)  # (B, T) token ids [prompt + response]
-    attention_mask: torch.LongTensor = tensor_field("step", default=None)  # (B, T)
-    action_mask: torch.BoolTensor = tensor_field("step", default=None)  # (B, A) mask over action (response) tokens
+    sequences: torch.Tensor = tensor_field("step", default=None)  # (B, T-proxy) token ids [prompt + response]
+    attention_mask: torch.LongTensor = tensor_field("step", default=None)  # (B, T-proxy)
+    action_mask: torch.BoolTensor = tensor_field("step", default=None)  # (B, A-proxy) mask over action (response) tokens
 
     # ── Policy: log π(a|s) under different policies ──
-    action_log_probs: torch.Tensor = tensor_field("step", default=None)  # (B, A) log π_θ(a|s)  current policy
-    base_action_log_probs: torch.Tensor = tensor_field("step", default=None)  # (B, A) log π_ref(a|s) reference policy
-    rollout_log_probs: torch.Tensor = tensor_field("step", default=None)  # (B, A) log π_old(a|s) rollout policy
+    action_log_probs: torch.Tensor = tensor_field("step", default=None)  # (B, A-proxy) log π_θ(a|s)  current policy
+    base_action_log_probs: torch.Tensor = tensor_field("step", default=None)  # (B, A-proxy) log π_ref(a|s) reference policy
+    rollout_log_probs: torch.Tensor = tensor_field("step", default=None)  # (B, A-proxy) log π_old(a|s) rollout policy
 
     # ── Value estimation ──
-    values: torch.Tensor = tensor_field("step", default=None)  # (B, A) V(s)
-    returns: torch.Tensor = tensor_field("step", default=None)  # (B, A) G_t
-    advantages: torch.Tensor = tensor_field("step", default=None)  # (B, A) Â(s,a)
-    kl: torch.Tensor = tensor_field("step", default=None)  # (B, A) D_KL(π_θ ‖ π_ref)
+    values: torch.Tensor = tensor_field("step", default=None)  # (B, A-proxy) V(s)
+    returns: torch.Tensor = tensor_field("step", default=None)  # (B, A-proxy) G_t
+    advantages: torch.Tensor = tensor_field("step", default=None)  # (B, A-proxy) Â(s,a)
+    kl: torch.Tensor = tensor_field("step", default=None)  # (B, A-proxy) D_KL(π_θ ‖ π_ref)
 
     # ── Episode outcomes (per-sample scalars) ──
     rewards: torch.Tensor = tensor_field("episode", default=None)  # (B,) R, used for advantage calculation
@@ -62,9 +62,9 @@ class Experience:
 
     # ── Metadata (not part of RL computation) ──
     index: list[int] = None
-    sequences_full: torch.Tensor = tensor_field("step", default=None)  # (B, T) token ids [prompt_full + response]
-    attention_mask_full: torch.LongTensor = tensor_field("step", default=None)  # (B, T)
-    action_mask_full: torch.BoolTensor = tensor_field("step", default=None)  # (B, A) mask over action (response) tokens
+    sequences_full: torch.Tensor = tensor_field("step", default=None)  # (B, T-full) token ids [prompt_full + response]
+    attention_mask_full: torch.LongTensor = tensor_field("step", default=None)  # (B, T-full)
+    action_mask_full: torch.BoolTensor = tensor_field("step", default=None)  # (B, A-full) mask over action (response) tokens
     prompts: list[str] = field(default_factory=list)
     labels: list[str] = field(default_factory=list)
     images: list = field(default_factory=list)  # per-sample image paths/URLs for VLM (None entries for text-only)
