@@ -511,10 +511,10 @@ class PPOTrainer(BasePPOTrainer):
             self.broadcast_to_vllm()
             state_dict = checkpoint_states["data_loader_state_dict"]
             if state_dict:
-                self.prompts_dataloader.load_state_dict(state_dict)
+                self.train_dataloader.load_state_dict(state_dict)
 
         for episode in range(start_episode, self.args.train.num_episodes):
-            dataset_length = len(self.prompts_dataloader)
+            dataset_length = len(self.train_dataloader)
             pbar = tqdm(
                 range(dataset_length),
                 desc=f"Episode [{episode + 1}/{self.args.train.num_episodes}]",
@@ -549,7 +549,7 @@ class PPOTrainer(BasePPOTrainer):
                     "episode": episode,
                     "global_step": global_step,
                     "total_consumed_prompts": total_consumed_prompts,
-                    "data_loader_state_dict": self.prompts_dataloader.state_dict(),
+                    "data_loader_state_dict": self.train_dataloader.state_dict(),
                 }
                 self.save_logs_and_checkpoints(global_step, status, client_states)
 
