@@ -20,21 +20,22 @@ def _collect_prompt_batch(dataloader_iter, num_prompts: int):
     collecting the returned prompts. Callers should still process any partial
     batch that was collected before exhaustion.
     """
-    prompts, labels, images = [], [], []
+    prompts_proxy, prompts_full, labels, images = [], [], []
     exhausted = False
 
-    while len(prompts) < num_prompts:
+    while len(prompts_proxy) < num_prompts:
         try:
-            _, batch_prompts, batch_labels, batch_images = next(dataloader_iter)
-            remaining = num_prompts - len(prompts)
-            prompts.extend(batch_prompts[:remaining])
+            _, batch_prompts_proxy, batch_prompts_full, batch_labels, batch_images = next(dataloader_iter)
+            remaining = num_prompts - len(prompts_proxy)
+            prompts_proxy.extend(batch_prompts_proxy[:remaining])
+            prompts_full.extend(batch_prompts_full[:remaining])
             labels.extend(batch_labels[:remaining])
             images.extend(batch_images[:remaining])
         except StopIteration:
             exhausted = True
             break
 
-    return prompts, labels, images, exhausted
+    return prompts_proxy, prompts_full, labels, images, exhausted
 
 
 class SamplesGenerator:
@@ -43,7 +44,7 @@ class SamplesGenerator:
     def __init__(
         self,
         strategy,
-        prompts_dataloader,
+        train_dataloader,
         eval_dataloader,
         tokenizer,
         vllm_engines: List,
@@ -54,7 +55,7 @@ class SamplesGenerator:
         self.tokenizer = tokenizer
         self.vllm_engines = vllm_engines or []
 
-        self.prompts_dataloader = prompts_dataloader
+        self.train_dataloader = train_dataloader
         self.eval_dataloader = eval_dataloader
 
     @torch.no_grad()
@@ -70,6 +71,7 @@ class SamplesGenerator:
         try:
             while True:
                 experiences, _, exhausted = self._generate_vllm(
+                    flag="eval",
                     dataloader_iter=self._eval_dataloader_iter,
                     num_prompts=self.args.rollout.batch_size,
                     dynamic_filtering=False,
@@ -86,7 +88,7 @@ class SamplesGenerator:
         return all_experiences
 
     @torch.no_grad()
-    def generate_samples(self, **generate_kwargs) -> Tuple[List[Experience], Optional[float], int, bool]:
+    def generate_train_samples(self, **generate_kwargs) -> Tuple[List[Experience], Optional[float], int, bool]:
         """Produce one training-sized batch and indicate if the dataloader is exhausted.
 
         When vllm_generate_batch_size > rollout_batch_size, a single vLLM call
@@ -110,6 +112,7 @@ class SamplesGenerator:
                 getattr(self.args.rollout, "vllm_generate_batch_size", None) or self.args.rollout.batch_size
             )
             experiences, prompts_consumed, dl_exhausted = self._generate_vllm(
+                flag="train",
                 dataloader_iter=self._dataloader_iter,
                 num_prompts=gen_batch_size,
                 dynamic_filtering=self.args.algo.dynamic_filtering_enable,
@@ -136,9 +139,9 @@ class SamplesGenerator:
         exhausted = self._dataloader_iter is None and len(self._sample_buffer) == 0
 
         return rollout_samples, filter_pass_rate, prompts_consumed, exhausted
-
+    
     def _generate_vllm(
-        self, dataloader_iter, num_prompts: int, dynamic_filtering, **generate_kwargs
+        self, flag, dataloader_iter, num_prompts: int, dynamic_filtering, **generate_kwargs
     ) -> Tuple[List[Experience], int, bool]:
         """Generate a batch of Experiences with optional reward filtering.
 
@@ -148,12 +151,12 @@ class SamplesGenerator:
         prompts_consumed = 0
         accepted_experiences: List[Experience] = []
 
-        prompts, labels, images, exhausted = _collect_prompt_batch(dataloader_iter, num_prompts)
-        if not prompts:
+        prompts_proxy, prompts_full, labels, images, exhausted = _collect_prompt_batch(dataloader_iter, num_prompts)
+        if not prompts_full:
             return [], prompts_consumed, True
 
-        target_num_prompts = len(prompts)
-        pending_refs = self._dispatch_prompts_to_vllm(prompts, labels, images=images, **generate_kwargs)
+        target_num_prompts = len(labels)
+        pending_refs = self._dispatch_prompts_to_vllm(flag, prompts_proxy, prompts_full, labels, images=images, **generate_kwargs)
         prompts_consumed += target_num_prompts
 
         pbar = tqdm(range(target_num_prompts), desc="Generate samples")
@@ -182,22 +185,22 @@ class SamplesGenerator:
                     pbar.update()
                 elif dynamic_filtering:
                     # Dispatch replacement for filtered prompt.
-                    new_prompts, new_labels, new_images, exhausted = _collect_prompt_batch(dataloader_iter, 1)
-                    prompts_consumed += len(new_prompts)
-                    if exhausted and not new_prompts:
+                    new_prompts_proxy, new_prompts_full, new_labels, new_images, exhausted = _collect_prompt_batch(dataloader_iter, 1)
+                    prompts_consumed += len(new_labels)
+                    if exhausted and not new_labels:
                         for remaining_ref in pending_refs:
                             ray.cancel(remaining_ref)
                         return [], prompts_consumed, True
-                    if new_prompts:
+                    if new_labels:
                         new_refs = self._dispatch_prompts_to_vllm(
-                            new_prompts, new_labels, images=new_images, **generate_kwargs
+                            flag, new_prompts_proxy, new_prompts_full, new_labels, images=new_images, **generate_kwargs
                         )
                         pending_refs.extend(new_refs)
 
         return accepted_experiences, prompts_consumed, exhausted
 
     def _dispatch_prompts_to_vllm(
-        self, prompts: List[str], labels: List[str], *, images: List = None, **generate_kwargs
+        self, flag: str, prompts_proxy: List[str], prompts_full: List[str], labels: List[str], *, images: List = None, **generate_kwargs
     ) -> List:
         """Send prompts to rollout executors and return Ray object refs."""
         sampling_params = SamplingParams(
@@ -219,20 +222,22 @@ class SamplesGenerator:
 
         # Pre-compute engine assignment to keep loads even.
         engine_indices = []
-        for _ in prompts:
+        for _ in labels:
             current_load, engine_idx = heapq.heappop(engine_heap)
             engine_indices.append(engine_idx)
             heapq.heappush(engine_heap, (current_load + n_samples, engine_idx))
 
         if images is None:
-            images = [None] * len(prompts)
+            images = [None] * len(labels)
 
         refs = []
-        for idx, (prompt, label, img) in enumerate(zip(prompts, labels, images)):
+        for idx, (prompt_proxy, prompt_full, label, img) in enumerate(zip(prompts_proxy, prompts_full, labels, images)):
             # Spread work across engines/workers in load-aware order.
             llm_engine = self.vllm_engines[engine_indices[idx]]
             ref = llm_engine.generate_responses.remote(
-                prompt=prompt,
+                flag = flag,
+                prompt_proxy=prompt_proxy,
+                prompt_full=prompt_full,
                 label=label,
                 sampling_params=sampling_params,
                 max_length=truncate_length,
@@ -295,12 +300,30 @@ class SamplesGenerator:
             if isinstance(value, torch.Tensor):
                 value = value.flatten()[0].item()
             info[key] = torch.tensor([value])
+        
+        # Processing the tokens for the full prompt
+        tokenized_observation_full = response["observation_tokens_full"].copy()
+        sequences_full = torch.tensor(tokenized_observation_full, dtype=torch.long)
+        tokenized_ranges_full = response["action_ranges_full"]
+        attention_mask_full = torch.ones(len(tokenized_observation_full), dtype=torch.long)
+        # Mark the action span within the concatenated tokens.
+        action_mask_full = torch.zeros_like(attention_mask_full)
+        for start, end in tokenized_ranges_full:
+            action_mask_full[start:end] = 1
+        
+        # Truncate everything to the configured context window.
+        sequences_full = sequences_full[:truncate_length].to("cpu")
+        attention_mask_full = attention_mask_full[:truncate_length].to("cpu")
+        action_mask_full = action_mask_full[1:truncate_length].to("cpu")
 
         return Experience(
             sequences=sequences.unsqueeze(0),
             attention_mask=attention_mask.unsqueeze(0),
             action_mask=action_mask.unsqueeze(0),
             rollout_log_probs=rollout_log_probs.unsqueeze(0) if rollout_log_probs is not None else None,
+            sequences_full=sequences_full.unsqueeze(0),
+            attention_mask_full=attention_mask_full.unsqueeze(0),
+            action_mask_full=action_mask_full.unsqueeze(0),
             prompts=[response["prompt"]],
             labels=[response["label"]],
             images=[response.get("images")],

@@ -62,6 +62,9 @@ class Experience:
 
     # ── Metadata (not part of RL computation) ──
     index: list[int] = None
+    sequences_full: torch.Tensor = tensor_field("step", default=None)  # (B, T) token ids [prompt_full + response]
+    attention_mask_full: torch.LongTensor = tensor_field("step", default=None)  # (B, T)
+    action_mask_full: torch.BoolTensor = tensor_field("step", default=None)  # (B, A) mask over action (response) tokens
     prompts: list[str] = field(default_factory=list)
     labels: list[str] = field(default_factory=list)
     images: list = field(default_factory=list)  # per-sample image paths/URLs for VLM (None entries for text-only)

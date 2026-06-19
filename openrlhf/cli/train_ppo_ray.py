@@ -53,7 +53,7 @@ def train(args):
     vllm_engines = None
     if args.vllm.num_engines is not None and args.vllm.num_engines > 0:
         max_len = args.data.max_len
-        if args.train.colocate_all and not args.train.async_enable:
+        if args.train.colocate_all:
             assert (
                 args.actor.num_nodes * args.actor.num_gpus_per_node
                 == args.vllm.num_engines * args.vllm.tensor_parallel_size
@@ -72,7 +72,7 @@ def train(args):
             args.vllm.enable_prefix_caching,
             args.vllm.enforce_eager,
             max_len,
-            pg if args.train.colocate_all and not args.train.async_enable else None,
+            pg if args.train.colocate_all else None,
             args.vllm.gpu_memory_utilization,
             args.vllm.enable_sleep,
             "processed_logprobs" if args.algo.advantage.is_correction_enable else None,
@@ -141,11 +141,7 @@ def train(args):
     else:
         reward_model = None
 
-    # Select trainer by mode
-    if args.train.async_enable:
-        from openrlhf.trainer.ppo_trainer_async import PPOTrainerAsync as PPOTrainer
-    else:
-        from openrlhf.trainer.ppo_trainer import PPOTrainer
+    from openrlhf.trainer.ppo_trainer import PPOTrainer
 
     # init PPO trainer (Single controller)
     ppo_trainer = PPOTrainer.remote(
@@ -268,18 +264,6 @@ if __name__ == "__main__":
         default="tis",
         choices=["tis", "icepop", "seq-mask-tis"],
         help="vLLM IS correction type: tis (token-level clamp), icepop (token-level filter), seq-mask-tis (sequence-level geom mean)",
-    )
-
-    # Async training using ray
-    parser.add_argument("--train.async_enable", action="store_true", default=False, help="Enable async training")
-    parser.add_argument("--train.async_queue_size", type=int, default=1, help="Queue size for async sampler<->trainer")
-    parser.add_argument(
-        "--train.partial_rollout_enable",
-        action="store_true",
-        default=False,
-        help="Enable partial rollout in async mode. Uses vLLM pause/resume for weight sync "
-        "instead of locking, allowing generation to overlap with training. "
-        "In-flight samples may contain tokens from both old and new weights.",
     )
 
     # Checkpoints
@@ -539,12 +523,16 @@ if __name__ == "__main__":
         "--eval.n_samples_per_prompt", type=int, default=4, help="Number of samples per prompt for evaluation"
     )
 
-    parser.add_argument("--data.input_key", type=str, default="input", help="JSON dataset key")
+    parser.add_argument("--data.input_key_proxy", type=str, default="proxy", help="JSON dataset key for short proxy contexts")
+    parser.add_argument("--data.input_key_full", type=str, default="full", help="JSON dataset key for full long contexts")
     parser.add_argument("--data.label_key", type=str, default=None, help="JSON dataset key")
     parser.add_argument("--data.input_template", type=str, default=None)
     parser.add_argument(
         "--data.apply_chat_template", action="store_true", default=False, help="Use HF tokenizer chat template"
     )
+
+    # Knowledge distillation
+    parser.add_argument("--algo.distil.kd_coef", type=float, default=0.0, help="The KL divergence for on-policy distillation")
 
     # wandb parameters
     parser.add_argument("--logger.wandb.key", type=str, default=None)
@@ -660,15 +648,6 @@ if __name__ == "__main__":
         print("Set args.vllm.enable_sleep to False when args.train.colocate_all is disabled.")
         args.vllm.enable_sleep = False
 
-    if args.train.colocate_all and args.train.async_enable:
-        print("[Warning] Using --colocate_all_models in async RLHF only colocates DeepSpeed models.")
-
-    if args.train.async_enable:
-        assert not args.vllm.enable_sleep, "Async RLHF is not supported with --vllm_enable_sleep."
-
-    if args.train.partial_rollout_enable:
-        assert args.train.async_enable, "--partial_rollout requires --async_train."
-
     if args.eval.dataset:
         assert args.reward.remote_url, "`--eval_dataset` is only supported with `--remote_rm_url`."
 
@@ -682,11 +661,9 @@ if __name__ == "__main__":
     # Set vLLM generate_batch_size to rollout_batch_size if not specified
     if not args.rollout.vllm_generate_batch_size:
         args.rollout.vllm_generate_batch_size = args.rollout.batch_size
-
-    if args.rollout.vllm_generate_batch_size > args.rollout.batch_size:
-        assert args.train.async_enable, (
-            "--vllm_generate_batch_size > --rollout_batch_size requires --async_train "
-            "(over-sampling needs async queue to buffer extra batches)."
+    else:
+        assert args.rollout.vllm_generate_batch_size <= args.rollout.batch_size, (
+            "--vllm_generate_batch_size needs to be not larger than --rollout_batch_size."
         )
 
     if args.algo.dynamic_filtering_enable:

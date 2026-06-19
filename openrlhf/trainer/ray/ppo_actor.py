@@ -310,8 +310,26 @@ class ActorPPOTrainer(ABC):
             experience.info["logprobs_diff"] = logprobs_diff.detach()
         else:
             kl_loss = 0
-
-        loss = actor_loss + kl_loss * kl_ctl
+        
+        # TODO needs more work
+        kd_coef = self.args.algo.distil.kd_coef
+        sequences_full = experience.sequences_full
+        attention_mask_full = experience.attention_mask_full
+        action_mask_full = experience.action_mask_full
+        action_log_probs_full, output = self.actor(
+            sequences_full,
+            action_mask_full,
+            attention_mask=attention_mask_full,
+            return_output=True,
+            ring_attn_group=self.strategy.ring_attn_group,
+            packed_seq_lens=packed_seq_lens,
+            return_entropy=self.args.actor.entropy_coef is not None,
+            **mm_inputs,
+        )
+        log_ratio = action_log_probs - action_log_probs_full
+        kd_loss = masked_mean(-log_ratio, action_mask, dim=None)
+            
+        loss = actor_loss + kl_loss * kl_ctl + kd_coef * kd_loss
         # mixtral
         if self.aux_loss:
             loss += output.aux_loss * self.args.actor.aux_loss_coef

@@ -38,13 +38,13 @@ def prepare_datasets(strategy, tokenizer):
 
     # Create train dataset
     train_data = train_data.select(range(min(args.data.max_samples, len(train_data))))
-    prompts_dataset = PromptDataset(train_data, tokenizer, strategy, input_template=args.data.input_template)
-    prompts_dataloader = strategy.setup_dataloader(
-        prompts_dataset,
+    train_dataset = PromptDataset(train_data, tokenizer, strategy, input_template=args.data.input_template)
+    train_dataloader = strategy.setup_dataloader(
+        train_dataset,
         1,
         True,
         True,
-        prompts_dataset.collate_fn,
+        train_dataset.collate_fn,
         num_workers=args.data.dataloader_num_workers,
     )
 
@@ -70,13 +70,13 @@ def prepare_datasets(strategy, tokenizer):
         eval_dataloader = None
 
     max_steps = (
-        len(prompts_dataset)
+        len(train_dataset)
         * args.rollout.n_samples_per_prompt
         // args.train.batch_size
         * args.train.num_episodes
         * args.train.max_epochs
     )
-    return prompts_dataloader, eval_dataloader, max_steps
+    return train_dataloader, eval_dataloader, max_steps
 
 
 def compute_eval_metrics(eval_dataloader, samples_list, n_samples_per_prompt):
@@ -87,10 +87,10 @@ def compute_eval_metrics(eval_dataloader, samples_list, n_samples_per_prompt):
     if not samples_list:
         return {}
 
-    prompt_to_datasource = {}
-    for datasources, prompts, labels, _images in eval_dataloader:
-        for prompt, datasource in zip(prompts, datasources):
-            prompt_to_datasource[prompt] = datasource
+    prompt_full_to_datasource = {}
+    for datasources, _, prompts_full, _, _images in eval_dataloader:
+        for prompt_full, datasource in zip(prompts_full, datasources):
+            prompt_full_to_datasource[prompt_full] = datasource
 
     # Single pass: collect prompts, rewards, response_length, truncated
     all_prompts = []
@@ -98,7 +98,7 @@ def compute_eval_metrics(eval_dataloader, samples_list, n_samples_per_prompt):
     all_response_lengths = []
     all_truncated = []
     for s in samples_list:
-        all_prompts.extend(s.prompts)
+        all_prompts.extend(s.prompts_full)
         all_rewards.append(s.rewards)
         all_response_lengths.append(s.response_length.item() if s.response_length is not None else None)
         all_truncated.append(s.truncated.item() if s.truncated is not None else None)
@@ -107,7 +107,7 @@ def compute_eval_metrics(eval_dataloader, samples_list, n_samples_per_prompt):
 
     metrics = {}
     for i in range(len(all_prompts) // n_samples_per_prompt):
-        ds = prompt_to_datasource.get(all_prompts[i * n_samples_per_prompt], "unknown")
+        ds = prompt_full_to_datasource.get(all_prompts[i * n_samples_per_prompt], "unknown")
         if ds not in metrics:
             metrics[ds] = {f"pass{n_samples_per_prompt}": 0, "pass1": 0, "count": 0, "lengths": [], "truncated": []}
         chunk = rewards[i]
@@ -524,7 +524,7 @@ class PPOTrainer(BasePPOTrainer):
                 # Draw one mini-batch of prompts; stop when loader is exhausted.
                 t_gen_start = time.time()
                 rollout_samples, filter_pass_rate, prompts_consumed, is_exhausted = (
-                    self.samples_generator.generate_samples(**self.generate_kwargs)
+                    self.samples_generator.generate_train_samples(**self.generate_kwargs)
                 )
                 generation_time = time.time() - t_gen_start
                 total_consumed_prompts += prompts_consumed

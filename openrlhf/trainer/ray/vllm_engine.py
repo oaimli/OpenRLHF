@@ -182,7 +182,9 @@ class RolloutRayActor:
 
     async def generate_responses(
         self,
-        prompt: str,
+        flag: str,
+        prompt_proxy: str,
+        prompt_full: str,
         label: str,
         sampling_params,
         max_length: int,
@@ -193,7 +195,9 @@ class RolloutRayActor:
         """Generate N samples for a single prompt."""
         tasks = [
             self.executor.execute(
-                prompt=prompt,
+                flag=flag,
+                prompt_proxy=prompt_proxy,
+                prompt_full=prompt_full,
                 label=label,
                 sampling_params=sampling_params,
                 max_length=max_length,
