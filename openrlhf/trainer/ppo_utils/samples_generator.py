@@ -96,7 +96,7 @@ class SamplesGenerator:
         in ``_sample_buffer`` and served in subsequent calls without hitting vLLM.
         """
         if getattr(self, "_dataloader_iter", None) is None:
-            self._dataloader_iter = iter(self.prompts_dataloader)
+            self._dataloader_iter = iter(self.train_dataloader)
             self._sample_buffer: List[Experience] = []
 
         chunk_size = self.args.rollout.batch_size * self.args.rollout.n_samples_per_prompt
