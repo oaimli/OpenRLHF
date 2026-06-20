@@ -23,10 +23,10 @@ def _collect_prompt_batch(dataloader_iter, num_prompts: int):
     prompts_proxy, prompts_full, labels, images = [], [], [], []
     exhausted = False
 
-    while len(prompts_proxy) < num_prompts:
+    while len(labels) < num_prompts:
         try:
             _, batch_prompts_proxy, batch_prompts_full, batch_labels, batch_images = next(dataloader_iter)
-            remaining = num_prompts - len(prompts_proxy)
+            remaining = num_prompts - len(labels)
             prompts_proxy.extend(batch_prompts_proxy[:remaining])
             prompts_full.extend(batch_prompts_full[:remaining])
             labels.extend(batch_labels[:remaining])
@@ -152,7 +152,7 @@ class SamplesGenerator:
         accepted_experiences: List[Experience] = []
 
         prompts_proxy, prompts_full, labels, images, exhausted = _collect_prompt_batch(dataloader_iter, num_prompts)
-        if not prompts_full:
+        if not labels:
             return [], prompts_consumed, True
 
         target_num_prompts = len(labels)
@@ -272,6 +272,7 @@ class SamplesGenerator:
         action_mask = action_mask[1:truncate_length].to("cpu")
 
         # Align rollout logprobs with the truncated action span.
+        # There is no logprob for the first token.
         if response["rollout_log_probs"] is not None:
             rollout_log_probs = torch.tensor(response["rollout_log_probs"][1:truncate_length]).to("cpu")
         else:
@@ -314,8 +315,11 @@ class SamplesGenerator:
         # Truncate everything to the configured context window.
         sequences_full = sequences_full[:truncate_length].to("cpu")
         attention_mask_full = attention_mask_full[:truncate_length].to("cpu")
+        # There is no logprob for the first token
         action_mask_full = action_mask_full[1:truncate_length].to("cpu")
 
+        # sequences_full, attention_mask_full and action_mask_full are for the full long context,
+        # while other output information is for the current prompt which is full long for evaluation and short proxy during training
         return Experience(
             sequences=sequences.unsqueeze(0),
             attention_mask=attention_mask.unsqueeze(0),

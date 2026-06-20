@@ -98,7 +98,7 @@ def compute_eval_metrics(eval_dataloader, samples_list, n_samples_per_prompt):
     all_response_lengths = []
     all_truncated = []
     for s in samples_list:
-        all_prompts.extend(s.prompts_full)
+        all_prompts.extend(s.prompts)
         all_rewards.append(s.rewards)
         all_response_lengths.append(s.response_length.item() if s.response_length is not None else None)
         all_truncated.append(s.truncated.item() if s.truncated is not None else None)
