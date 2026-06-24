@@ -313,21 +313,22 @@ class ActorPPOTrainer(ABC):
         
         # knowledge distillation loss
         kd_coef = self.args.algo.distil.kd_coef
-        sequences_full = experience.sequences_full
-        attention_mask_full = experience.attention_mask_full
-        action_mask_full = experience.action_mask_full
-        action_log_probs_full, output = self.actor(
-            sequences_full,
-            action_mask_full,
-            attention_mask=attention_mask_full,
-            return_output=True,
-            ring_attn_group=self.strategy.ring_attn_group,
-            packed_seq_lens=packed_seq_lens,
-            return_entropy=self.args.actor.entropy_coef is not None,
-            **mm_inputs,
-        )
-        log_ratio = action_log_probs[action_mask == 1].detach() - action_log_probs_full[action_mask_full == 1]
-        kd_loss = -log_ratio.mean()
+        # sequences_full = experience.sequences_full
+        # attention_mask_full = experience.attention_mask_full
+        # action_mask_full = experience.action_mask_full
+        # action_log_probs_full, output = self.actor(
+        #     sequences_full,
+        #     action_mask_full,
+        #     attention_mask=attention_mask_full,
+        #     return_output=True,
+        #     ring_attn_group=self.strategy.ring_attn_group,
+        #     packed_seq_lens=packed_seq_lens,
+        #     return_entropy=self.args.actor.entropy_coef is not None,
+        #     **mm_inputs,
+        # )
+        # log_ratio = action_log_probs[action_mask == 1].detach() - action_log_probs_full[action_mask_full == 1]
+        # kd_loss = -log_ratio.mean()
+        kd_loss = 0
         print("actor_loss", actor_loss.detach())
         print("kd_loss", kd_loss.detach())
             
