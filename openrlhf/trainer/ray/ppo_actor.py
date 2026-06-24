@@ -313,23 +313,24 @@ class ActorPPOTrainer(ABC):
         
         # knowledge distillation loss
         kd_coef = self.args.algo.distil.kd_coef
-        target_index = 0
-        sequences_full = experience.sequences_full[target_index: target_index + 1]
-        attention_mask_full = experience.attention_mask_full[target_index: target_index + 1]
-        action_mask_full = experience.action_mask_full[target_index: target_index + 1]
-        action_log_probs_full, output_full = self.actor(
-            sequences_full,
-            action_mask_full,
-            attention_mask=attention_mask_full,
-            return_output=True,
-            ring_attn_group=self.strategy.ring_attn_group,
-            packed_seq_lens=packed_seq_lens,
-            return_entropy=self.args.actor.entropy_coef is not None,
-            **mm_inputs,
-        )
-        log_ratio = action_log_probs[target_index: target_index + 1].detach()[action_mask == 1] - action_log_probs_full[action_mask_full == 1]
-        kd_loss = -log_ratio.mean()
-        experience.info["kd_loss"] = kd_loss.detach()
+        # target_index = 0
+        # sequences_full = experience.sequences_full[target_index: target_index + 1]
+        # attention_mask_full = experience.attention_mask_full[target_index: target_index + 1]
+        # action_mask_full = experience.action_mask_full[target_index: target_index + 1]
+        # action_log_probs_full, output_full = self.actor(
+        #     sequences_full,
+        #     action_mask_full,
+        #     attention_mask=attention_mask_full,
+        #     return_output=True,
+        #     ring_attn_group=self.strategy.ring_attn_group,
+        #     packed_seq_lens=packed_seq_lens,
+        #     return_entropy=self.args.actor.entropy_coef is not None,
+        #     **mm_inputs,
+        # )
+        # log_ratio = action_log_probs[target_index: target_index + 1].detach()[action_mask == 1] - action_log_probs_full[action_mask_full == 1]
+        # kd_loss = -log_ratio.mean()
+        # experience.info["kd_loss"] = kd_loss.detach()
+        kd_loss = 0
 
         loss = actor_loss + kl_loss * kl_ctl + kd_coef * kd_loss
         # mixtral
