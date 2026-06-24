@@ -328,6 +328,8 @@ class ActorPPOTrainer(ABC):
         )
         log_ratio = action_log_probs[action_mask == 1].detach() - action_log_probs_full[action_mask_full == 1]
         kd_loss = -log_ratio.mean()
+        print("actor_loss", actor_loss.detach())
+        print("kd_loss", kd_loss.detach())
             
         loss = actor_loss + kl_loss * kl_ctl + kd_coef * kd_loss
         # mixtral
