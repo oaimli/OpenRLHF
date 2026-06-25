@@ -201,6 +201,7 @@ class SingleTurnAgentExecutor(AgentExecutorBase):
 
     async def execute(self, flag, prompt_proxy, prompt_full, label, sampling_params, max_length: int, hf_tokenizer, llm_engine, images=None):
         prompt_working = prompt_full if flag == "eval" else prompt_proxy
+        print("prompt_working", len(prompt_working.split()), "prompt_full", len(prompt_full.split()), "prompt_proxy", len(prompt_proxy.split()))
         # Tokenize — for VLM the processor inserts image tokens and returns pixel tensors.
         pil_images = []
         mm_train_inputs = None
