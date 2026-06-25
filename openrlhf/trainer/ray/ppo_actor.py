@@ -255,7 +255,6 @@ class ActorPPOTrainer(ABC):
         sequences = experience.sequences
         action_mask = experience.action_mask
         attention_mask = experience.attention_mask
-        packed_seq_lens = None
         old_action_log_probs = experience.action_log_probs
         advantages = experience.advantages
         base_action_log_probs = experience.base_action_log_probs
@@ -277,7 +276,7 @@ class ActorPPOTrainer(ABC):
             attention_mask=attention_mask,
             return_output=True,
             ring_attn_group=None,
-            packed_seq_lens=packed_seq_lens,
+            packed_seq_lens=None,
             return_entropy=self.args.actor.entropy_coef is not None,
             **mm_inputs,
         )
@@ -316,25 +315,26 @@ class ActorPPOTrainer(ABC):
         
         # knowledge distillation loss, with ring attention and gradient checkpointing
         kd_coef = self.args.algo.distil.kd_coef
-        target_index = int(torch.argmax(scores.view(-1)).item())
-        sequences_full = experience.sequences_full[target_index: target_index + 1]
-        attention_mask_full = experience.attention_mask_full[target_index: target_index + 1]
-        action_mask_full = experience.action_mask_full[target_index: target_index + 1]
-        action_log_probs_full, _ = self.actor(
-            sequences_full,
-            action_mask_full,
-            attention_mask=attention_mask_full,
-            return_output=True,
-            ring_attn_group=self.strategy.ring_attn_group,
-            packed_seq_lens=packed_seq_lens,
-            return_entropy=self.args.actor.entropy_coef is not None,
-            **mm_inputs,
-        )
-        log_ratio = action_log_probs[target_index: target_index + 1].detach()[action_mask == 1] - action_log_probs_full[action_mask_full == 1]
-        kd_loss = log_ratio.mean()
-        experience.info["kd_loss"] = kd_loss.detach()
+        # target_index = int(torch.argmax(scores.view(-1)).item())
+        # sequences_full = experience.sequences_full[target_index: target_index + 1]
+        # attention_mask_full = experience.attention_mask_full[target_index: target_index + 1]
+        # action_mask_full = experience.action_mask_full[target_index: target_index + 1]
+        # action_log_probs_full, _ = self.actor(
+        #     sequences_full,
+        #     action_mask_full,
+        #     attention_mask=attention_mask_full,
+        #     return_output=True,
+        #     ring_attn_group=self.strategy.ring_attn_group,
+        #     packed_seq_lens=None,
+        #     return_entropy=self.args.actor.entropy_coef is not None,
+        #     **mm_inputs,
+        # )
+        # log_ratio = action_log_probs[target_index: target_index + 1].detach()[action_mask == 1] - action_log_probs_full[action_mask_full == 1]
+        # kd_loss = log_ratio.mean()
+        # experience.info["kd_loss"] = kd_loss.detach()
+        kd_loss = 0
 
-        loss = actor_loss + kl_loss * kl_ctl + kd_coef * kd_loss * 0
+        loss = actor_loss + kl_loss * kl_ctl + kd_coef * kd_loss
         # mixtral
         if self.aux_loss:
             loss += output.aux_loss * self.args.actor.aux_loss_coef
