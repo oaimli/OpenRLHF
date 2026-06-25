@@ -334,7 +334,7 @@ class ActorPPOTrainer(ABC):
         kd_loss = log_ratio.mean()
         experience.info["kd_loss"] = kd_loss.detach()
 
-        loss = actor_loss + kl_loss * kl_ctl + kd_coef * kd_loss
+        loss = actor_loss + kl_loss * kl_ctl + kd_coef * kd_loss * 0
         # mixtral
         if self.aux_loss:
             loss += output.aux_loss * self.args.actor.aux_loss_coef
