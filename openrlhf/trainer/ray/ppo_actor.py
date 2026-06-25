@@ -268,7 +268,7 @@ class ActorPPOTrainer(ABC):
         ):
             mm_inputs = merge_mm_train_inputs(experience.mm_train_inputs, sequences.device)
 
-        # actor loss
+        # actor loss on proxy contexts, no ring attention, no gradient checkpointing
         self.actor.gradient_checkpointing_disable()
         action_log_probs, output = self.actor(
             sequences,
@@ -313,7 +313,7 @@ class ActorPPOTrainer(ABC):
         else:
             kl_loss = 0
         
-        # knowledge distillation loss
+        # knowledge distillation loss, with ring attention and gradient checkpointing
         kd_coef = self.args.algo.distil.kd_coef
         target_index = 0
         sequences_full = experience.sequences_full[target_index: target_index + 1]
