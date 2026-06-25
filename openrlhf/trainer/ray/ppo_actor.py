@@ -283,17 +283,17 @@ class ActorPPOTrainer(ABC):
         self.actor.gradient_checkpointing_enable()
 
         # loss function
-        # actor_loss, clip_ratio, ppo_kl, vllm_kl = self.actor_loss_fn(
-        #     action_log_probs,
-        #     old_action_log_probs,
-        #     advantages,
-        #     action_mask=experience.action_mask,
-        #     rollout_log_probs=experience.rollout_log_probs,
-        # )
-        # experience.info["ppo_clip_ratio"] = clip_ratio.detach()
-        # experience.info["ppo_kl"] = ppo_kl.detach()
-        # if vllm_kl is not None:
-            # experience.info["vllm_kl"] = vllm_kl.detach()
+        actor_loss, clip_ratio, ppo_kl, vllm_kl = self.actor_loss_fn(
+            action_log_probs,
+            old_action_log_probs,
+            advantages,
+            action_mask=experience.action_mask,
+            rollout_log_probs=experience.rollout_log_probs,
+        )
+        experience.info["ppo_clip_ratio"] = clip_ratio.detach()
+        experience.info["ppo_kl"] = ppo_kl.detach()
+        if vllm_kl is not None:
+            experience.info["vllm_kl"] = vllm_kl.detach()
 
         if self.args.algo.kl.use_loss:
             if self.args.algo.kl.init_coef > 0:
@@ -319,23 +319,24 @@ class ActorPPOTrainer(ABC):
         sequences_full = experience.sequences_full[target_index: target_index + 1]
         attention_mask_full = experience.attention_mask_full[target_index: target_index + 1]
         action_mask_full = experience.action_mask_full[target_index: target_index + 1]
+        self.actor.gradient_checkpointing_enable()
         action_log_probs_full, _ = self.actor(
             sequences_full,
             action_mask_full,
             attention_mask=attention_mask_full,
             return_output=True,
-            ring_attn_group=self.strategy.ring_attn_group,
+            ring_attn_group=None,
             packed_seq_lens=None,
             return_entropy=self.args.actor.entropy_coef is not None,
             **mm_inputs,
         )
+        self.actor.gradient_checkpointing_disable()
         log_ratio = action_log_probs[target_index: target_index + 1].detach()[action_mask == 1] - action_log_probs_full[action_mask_full == 1]
         kd_loss = log_ratio.mean()
         experience.info["kd_loss"] = kd_loss.detach()
         
         # debugging
         # kd_loss = 0
-        actor_loss = kd_loss
 
         loss = actor_loss + kl_loss * kl_ctl + kd_coef * kd_loss
         # mixtral
