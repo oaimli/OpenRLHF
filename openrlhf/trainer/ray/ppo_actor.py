@@ -269,7 +269,7 @@ class ActorPPOTrainer(ABC):
             mm_inputs = merge_mm_train_inputs(experience.mm_train_inputs, sequences.device)
 
         # actor loss on proxy contexts, no ring attention, no gradient checkpointing
-        self.actor.gradient_checkpointing_disable()
+        # self.actor.gradient_checkpointing_disable()
         action_log_probs, output = self.actor(
             sequences,
             action_mask,
@@ -280,7 +280,7 @@ class ActorPPOTrainer(ABC):
             return_entropy=self.args.actor.entropy_coef is not None,
             **mm_inputs,
         )
-        self.actor.gradient_checkpointing_enable()
+        # self.actor.gradient_checkpointing_enable()
 
         # loss function
         actor_loss, clip_ratio, ppo_kl, vllm_kl = self.actor_loss_fn(
