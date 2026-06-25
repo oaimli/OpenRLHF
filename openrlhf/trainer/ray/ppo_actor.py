@@ -251,6 +251,7 @@ class ActorPPOTrainer(ABC):
     def training_step(self, experience: Experience, kl_ctl: float, step: int) -> Dict[str, float]:
         self.actor.train()
 
+        scores = experience.scores
         sequences = experience.sequences
         action_mask = experience.action_mask
         attention_mask = experience.attention_mask
@@ -269,7 +270,7 @@ class ActorPPOTrainer(ABC):
             mm_inputs = merge_mm_train_inputs(experience.mm_train_inputs, sequences.device)
 
         # actor loss on proxy contexts, no ring attention, no gradient checkpointing
-        # self.actor.gradient_checkpointing_disable()
+        self.actor.gradient_checkpointing_disable()
         action_log_probs, output = self.actor(
             sequences,
             action_mask,
@@ -280,7 +281,7 @@ class ActorPPOTrainer(ABC):
             return_entropy=self.args.actor.entropy_coef is not None,
             **mm_inputs,
         )
-        # self.actor.gradient_checkpointing_enable()
+        self.actor.gradient_checkpointing_enable()
 
         # loss function
         actor_loss, clip_ratio, ppo_kl, vllm_kl = self.actor_loss_fn(
@@ -315,6 +316,7 @@ class ActorPPOTrainer(ABC):
         
         # knowledge distillation loss, with ring attention and gradient checkpointing
         kd_coef = self.args.algo.distil.kd_coef
+        
         target_index = 0
         sequences_full = experience.sequences_full[target_index: target_index + 1]
         attention_mask_full = experience.attention_mask_full[target_index: target_index + 1]
@@ -330,7 +332,7 @@ class ActorPPOTrainer(ABC):
             **mm_inputs,
         )
         log_ratio = action_log_probs[target_index: target_index + 1].detach()[action_mask == 1] - action_log_probs_full[action_mask_full == 1]
-        kd_loss = -log_ratio.mean()
+        kd_loss = log_ratio.mean()
         experience.info["kd_loss"] = kd_loss.detach()
 
         loss = actor_loss + kl_loss * kl_ctl + kd_coef * kd_loss
