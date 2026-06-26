@@ -315,8 +315,11 @@ class ActorPPOTrainer(ABC):
         
         # knowledge distillation loss, with ring attention and gradient checkpointing
         device = sequences.device
-        kd_coef = self.args.algo.distil.kd_coef
         target_index = int(torch.argmax(scores.view(-1)).item())
+        if self.args.algo.distil.adaptive_kd:
+            kd_coef = scores.view(-1)[target_index]
+        else:
+            kd_coef = self.args.algo.distil.kd_coef
         sequences_full = experience.sequences_full[target_index: target_index + 1].to(device)
         attention_mask_full = experience.attention_mask_full[target_index: target_index + 1].to(device)
         action_mask_full = experience.action_mask_full[target_index: target_index + 1].to(device)
