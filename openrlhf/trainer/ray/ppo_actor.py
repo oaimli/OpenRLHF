@@ -277,7 +277,7 @@ class ActorPPOTrainer(ABC):
             action_mask,
             attention_mask=attention_mask,
             return_output=True,
-            allgather_logits=True,
+            allgather_logits=False,
             ring_attn_group=self.strategy.ring_attn_group,
             packed_seq_lens=None,
             return_entropy=self.args.actor.entropy_coef is not None,
@@ -327,54 +327,56 @@ class ActorPPOTrainer(ABC):
         attention_mask_full = experience.attention_mask_full[target_index: target_index + 1].to(device)
         action_mask_full = experience.action_mask_full[target_index: target_index + 1].to(device)
 
-        # # Monte Carlo approximation with log-probs (allgather_logits needs to be False for both actors)
-        # self.actor.gradient_checkpointing_enable()
-        # action_log_probs_full, _ = self.actor(
-        #     sequences_full,
-        #     action_mask_full,
-        #     attention_mask=attention_mask_full,
-        #     return_output=True,
-        #     ring_attn_group=self.strategy.ring_attn_group,
-        #     packed_seq_lens=None,
-        #     return_entropy=self.args.actor.entropy_coef is not None,
-        #     **mm_inputs,
-        # )
-        # self.actor.gradient_checkpointing_disable()
-        # print("action_log_probs", action_log_probs.shape) # batch-size, sequence-len - 1
-        # print("action_log_probs_full", action_log_probs_full.shape) # batch-size, sequence-len - 1
-        # print("action_mask", action_mask.shape) # batch-size, sequence-len - 1
-        # print("action_mask_full", action_mask_full.shape) # batch-size, sequence-len - 1
-        # log_ratio = action_log_probs[target_index: target_index + 1].detach()[action_mask[target_index: target_index + 1] == 1] - action_log_probs_full[action_mask_full == 1]
-        # kd_loss = log_ratio.mean()
-        # experience.info["kd_loss"] = kd_loss.detach()
-
-        # per-token KL divergence with logits
+        # Monte Carlo approximation with log-probs (allgather_logits needs to be False for both actors)
         self.actor.gradient_checkpointing_enable()
-        _, output_full = self.actor(
+        action_log_probs_full, _ = self.actor(
             sequences_full,
             action_mask_full,
             attention_mask=attention_mask_full,
             return_output=True,
-            allgather_logits=True,
+            allgather_logits=False,
             ring_attn_group=self.strategy.ring_attn_group,
             packed_seq_lens=None,
             return_entropy=self.args.actor.entropy_coef is not None,
             **mm_inputs,
         )
         self.actor.gradient_checkpointing_disable()
-        print("output_logits", output["logits"].shape) # batch-size, sequence-len, 1, vocab
-        print("output_full_logits", output_full["logits"].shape) # batch-size, sequence-len, 1, vocab
-        with torch.no_grad():
-            output_logits = output["logits"].squeeze(2)[target_index: target_index + 1, :-1, :][action_mask[target_index: target_index + 1] == 1].to(torch.bfloat16)
-        output_full_logits = output_full["logits"].squeeze(2)[:, :-1, :][action_mask_full == 1].to(torch.bfloat16)
-        print("output_logits", output_logits.shape) # 1, response-len, vocab
-        print("output_full_logits", output_full_logits.shape) # 1, response-len, vocab
-        kd_loss = F.kl_div(
-            F.log_softmax(output_full_logits, dim=-1),
-            F.log_softmax(output_logits, dim=-1),
-            log_target=True,
-            reduction="batchmean")
-        experience.info["kd_loss"] = kd_loss.item()
+        # print("action_log_probs", action_log_probs.shape) # batch-size, sequence-len - 1
+        # print("action_log_probs_full", action_log_probs_full.shape) # batch-size, sequence-len - 1
+        # print("action_mask", action_mask.shape) # batch-size, sequence-len - 1
+        # print("action_mask_full", action_mask_full.shape) # batch-size, sequence-len - 1
+        log_ratio = action_log_probs[target_index: target_index + 1].detach()[action_mask[target_index: target_index + 1] == 1] - action_log_probs_full[action_mask_full == 1]
+        kd_loss = log_ratio.mean()
+        experience.info["kd_loss"] = kd_loss.detach()
+
+        # # this requires a lot GPU memory
+        # # per-token KL divergence with logits (allgather_logits needs to be True for both actors)
+        # self.actor.gradient_checkpointing_enable()
+        # _, output_full = self.actor(
+        #     sequences_full,
+        #     action_mask_full,
+        #     attention_mask=attention_mask_full,
+        #     return_output=True,
+        #     allgather_logits=True,
+        #     ring_attn_group=self.strategy.ring_attn_group,
+        #     packed_seq_lens=None,
+        #     return_entropy=self.args.actor.entropy_coef is not None,
+        #     **mm_inputs,
+        # )
+        # self.actor.gradient_checkpointing_disable()
+        # print("output_logits", output["logits"].shape) # batch-size, sequence-len, 1, vocab
+        # print("output_full_logits", output_full["logits"].shape) # batch-size, sequence-len, 1, vocab
+        # with torch.no_grad():
+        #     output_logits = output["logits"].squeeze(2)[target_index: target_index + 1, :-1, :][action_mask[target_index: target_index + 1] == 1].to(torch.bfloat16)
+        # output_full_logits = output_full["logits"].squeeze(2)[:, :-1, :][action_mask_full == 1].to(torch.bfloat16)
+        # print("output_logits", output_logits.shape) # 1, response-len, vocab
+        # print("output_full_logits", output_full_logits.shape) # 1, response-len, vocab
+        # kd_loss = F.kl_div(
+        #     F.log_softmax(output_full_logits, dim=-1),
+        #     F.log_softmax(output_logits, dim=-1),
+        #     log_target=True,
+        #     reduction="batchmean")
+        # experience.info["kd_loss"] = kd_loss.item()
         
         loss = actor_loss + kl_loss * kl_ctl + kd_coef * kd_loss
         # mixtral
