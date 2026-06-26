@@ -344,10 +344,12 @@ class ActorPPOTrainer(ABC):
         # experience.info["kd_loss"] = kd_loss.detach()
 
         # per-token KL divergence with logits
-        print("output_logits", output["logits"].shape)
-        print("output_full_logits", output_full["logits"].shape)
-        print("action_mask", action_mask.shape)
-        print("action_mask_full", action_mask_full.shape)
+        print("action_log_probs", action_log_probs.shape)
+        print("action_log_probs_full", action_log_probs_full.shape)
+        print("output_logits", output["logits"].shape) # batch-size, sequence-len, vocab
+        print("output_full_logits", output_full["logits"].shape) # batch-size, sequence-len, vocab
+        print("action_mask", action_mask.shape) # batch-size, sequence-len
+        print("action_mask_full", action_mask_full.shape) # batch-size, sequence-len
         output_logits = output["logits"][target_index: target_index + 1].detach()[action_mask[target_index: target_index + 1] == 1]
         output_full_logits = output_full["logits"][action_mask_full == 1]
         kl_per_token = F.kl_div(
