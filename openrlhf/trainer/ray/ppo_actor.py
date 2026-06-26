@@ -364,8 +364,10 @@ class ActorPPOTrainer(ABC):
         self.actor.gradient_checkpointing_disable()
         print("output_logits", output["logits"].shape) # batch-size, sequence-len, 1, vocab
         print("output_full_logits", output_full["logits"].shape) # batch-size, sequence-len, 1, vocab
-        output_logits = output["logits"][:, :-1, :, :][target_index: target_index + 1].detach()[action_mask[target_index: target_index + 1] == 1]
+        output_logits = output["logits"][target_index: target_index + 1, :-1, :, :].detach()[action_mask[target_index: target_index + 1] == 1]
         output_full_logits = output_full["logits"][:, :-1, :, :][action_mask_full == 1]
+        print("output_logits", output_logits.shape) # 1, response-len, 1, vocab
+        print("output_full_logits", output_full_logits.shape) # 1, response-len, 1, vocab
         kl_per_token = F.kl_div(
             F.log_softmax(output_full_logits, dim=-1),
             F.log_softmax(output_logits, dim=-1),
