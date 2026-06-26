@@ -338,21 +338,21 @@ class ActorPPOTrainer(ABC):
         )
         self.actor.gradient_checkpointing_disable()
 
-        # Monte Carlo approximation with log-probs
-        log_ratio = action_log_probs[target_index: target_index + 1].detach()[action_mask[target_index: target_index + 1] == 1] - action_log_probs_full[action_mask_full == 1]
-        kd_loss = log_ratio.mean()
-        experience.info["kd_loss"] = kd_loss.detach()
+        # # Monte Carlo approximation with log-probs
+        # log_ratio = action_log_probs[target_index: target_index + 1].detach()[action_mask[target_index: target_index + 1] == 1] - action_log_probs_full[action_mask_full == 1]
+        # kd_loss = log_ratio.mean()
+        # experience.info["kd_loss"] = kd_loss.detach()
 
-        # # per-token KL divergence with logits
-        # output_logits = output["logits"][target_index: target_index + 1].detach()[action_mask[target_index: target_index + 1] == 1]
-        # output_full_logits = output_full["logits"][action_mask_full == 1]
-        # kl_per_token = F.kl_div(
-        #     F.log_softmax(output_logits, dim=-1),
-        #     F.log_softmax(output_full_logits, dim=-1),
-        #     log_target=True,
-        #     reduction="none",).sum(dim=-1)
-        # kd_loss = kl_per_token.mean()
-        # experience.info["kd_loss"] = kd_loss
+        # per-token KL divergence with logits
+        output_logits = output["logits"][target_index: target_index + 1].detach()[action_mask[target_index: target_index + 1] == 1]
+        output_full_logits = output_full["logits"][action_mask_full == 1]
+        kl_per_token = F.kl_div(
+            F.log_softmax(output_full_logits, dim=-1),
+            F.log_softmax(output_logits, dim=-1),
+            log_target=True,
+            reduction="none",).sum(dim=-1)
+        kd_loss = kl_per_token.mean()
+        experience.info["kd_loss"] = kd_loss.detach()
         
         loss = actor_loss + kl_loss * kl_ctl + kd_coef * kd_loss
         # mixtral
