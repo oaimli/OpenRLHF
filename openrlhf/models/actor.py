@@ -253,6 +253,13 @@ class Actor(nn.Module):
 
         action_log_probs = log_probs[:, -action_mask.shape[1] :] * action_mask.float()
 
+        # this is for the logits-based KL
+        if return_action_log_probs and return_output and allgather_logits and self.packing_samples:
+            output["logits"] = gather_and_pad_tensor(
+                output["logits"], ring_attn_group, ring_attn_pad_len, indices, batch, seqlen
+                )
+            return action_log_probs, output
+
         return (action_log_probs, output) if return_output else action_log_probs
 
     def gradient_checkpointing_enable(self, gradient_checkpointing_kwargs={"use_reentrant": False}):

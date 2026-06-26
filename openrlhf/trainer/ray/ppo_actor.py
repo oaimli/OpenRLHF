@@ -277,6 +277,7 @@ class ActorPPOTrainer(ABC):
             action_mask,
             attention_mask=attention_mask,
             return_output=True,
+            allgather_logits=True,
             ring_attn_group=self.strategy.ring_attn_group,
             packed_seq_lens=None,
             return_entropy=self.args.actor.entropy_coef is not None,
@@ -326,7 +327,7 @@ class ActorPPOTrainer(ABC):
         attention_mask_full = experience.attention_mask_full[target_index: target_index + 1].to(device)
         action_mask_full = experience.action_mask_full[target_index: target_index + 1].to(device)
 
-        # # Monte Carlo approximation with log-probs
+        # # Monte Carlo approximation with log-probs (allgather_logits needs to be False for both actors)
         # self.actor.gradient_checkpointing_enable()
         # action_log_probs_full, _ = self.actor(
         #     sequences_full,
@@ -349,9 +350,9 @@ class ActorPPOTrainer(ABC):
 
         # per-token KL divergence with logits
         self.actor.gradient_checkpointing_enable()
-        output_full = self.actor(
+        _, output_full = self.actor(
             sequences_full,
-            None,
+            action_mask_full,
             attention_mask=attention_mask_full,
             return_output=True,
             allgather_logits=True,
