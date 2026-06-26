@@ -325,31 +325,44 @@ class ActorPPOTrainer(ABC):
         sequences_full = experience.sequences_full[target_index: target_index + 1].to(device)
         attention_mask_full = experience.attention_mask_full[target_index: target_index + 1].to(device)
         action_mask_full = experience.action_mask_full[target_index: target_index + 1].to(device)
+
+        # # Monte Carlo approximation with log-probs
+        # self.actor.gradient_checkpointing_enable()
+        # action_log_probs_full, _ = self.actor(
+        #     sequences_full,
+        #     action_mask_full,
+        #     attention_mask=attention_mask_full,
+        #     return_output=True,
+        #     ring_attn_group=self.strategy.ring_attn_group,
+        #     packed_seq_lens=None,
+        #     return_entropy=self.args.actor.entropy_coef is not None,
+        #     **mm_inputs,
+        # )
+        # self.actor.gradient_checkpointing_disable()
+        # print("action_log_probs", action_log_probs.shape)
+        # print("action_log_probs_full", action_log_probs_full.shape)
+        # print("action_mask", action_mask.shape) # batch-size, sequence-len
+        # print("action_mask_full", action_mask_full.shape) # batch-size, sequence-len
+        # log_ratio = action_log_probs[target_index: target_index + 1].detach()[action_mask[target_index: target_index + 1] == 1] - action_log_probs_full[action_mask_full == 1]
+        # kd_loss = log_ratio.mean()
+        # experience.info["kd_loss"] = kd_loss.detach()
+
+        # per-token KL divergence with logits
         self.actor.gradient_checkpointing_enable()
-        action_log_probs_full, output_full = self.actor(
+        output_full = self.actor(
             sequences_full,
-            action_mask_full,
+            None,
             attention_mask=attention_mask_full,
             return_output=True,
+            allgather_logits=True,
             ring_attn_group=self.strategy.ring_attn_group,
             packed_seq_lens=None,
             return_entropy=self.args.actor.entropy_coef is not None,
             **mm_inputs,
         )
         self.actor.gradient_checkpointing_disable()
-
-        # # Monte Carlo approximation with log-probs
-        # log_ratio = action_log_probs[target_index: target_index + 1].detach()[action_mask[target_index: target_index + 1] == 1] - action_log_probs_full[action_mask_full == 1]
-        # kd_loss = log_ratio.mean()
-        # experience.info["kd_loss"] = kd_loss.detach()
-
-        # per-token KL divergence with logits
-        print("action_log_probs", action_log_probs.shape)
-        print("action_log_probs_full", action_log_probs_full.shape)
         print("output_logits", output["logits"].shape) # batch-size, sequence-len, vocab
         print("output_full_logits", output_full["logits"].shape) # batch-size, sequence-len, vocab
-        print("action_mask", action_mask.shape) # batch-size, sequence-len
-        print("action_mask_full", action_mask_full.shape) # batch-size, sequence-len
         output_logits = output["logits"][target_index: target_index + 1].detach()[action_mask[target_index: target_index + 1] == 1]
         output_full_logits = output_full["logits"][action_mask_full == 1]
         kl_per_token = F.kl_div(
