@@ -373,7 +373,7 @@ class ActorPPOTrainer(ABC):
             F.log_softmax(output_full_logits, dim=-1),
             F.log_softmax(output_logits, dim=-1),
             log_target=True,
-            reduction="batchmean",).sum(dim=-1)
+            reduction="batchmean")
         experience.info["kd_loss"] = kd_loss.item()
         
         loss = actor_loss + kl_loss * kl_ctl + kd_coef * kd_loss
