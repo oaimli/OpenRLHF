@@ -340,10 +340,10 @@ class ActorPPOTrainer(ABC):
         #     **mm_inputs,
         # )
         # self.actor.gradient_checkpointing_disable()
-        # print("action_log_probs", action_log_probs.shape)
-        # print("action_log_probs_full", action_log_probs_full.shape)
-        # print("action_mask", action_mask.shape) # batch-size, sequence-len
-        # print("action_mask_full", action_mask_full.shape) # batch-size, sequence-len
+        # print("action_log_probs", action_log_probs.shape) # batch-size, sequence-len - 1
+        # print("action_log_probs_full", action_log_probs_full.shape) # batch-size, sequence-len - 1
+        # print("action_mask", action_mask.shape) # batch-size, sequence-len - 1
+        # print("action_mask_full", action_mask_full.shape) # batch-size, sequence-len - 1
         # log_ratio = action_log_probs[target_index: target_index + 1].detach()[action_mask[target_index: target_index + 1] == 1] - action_log_probs_full[action_mask_full == 1]
         # kd_loss = log_ratio.mean()
         # experience.info["kd_loss"] = kd_loss.detach()
@@ -362,8 +362,8 @@ class ActorPPOTrainer(ABC):
             **mm_inputs,
         )
         self.actor.gradient_checkpointing_disable()
-        print("output_logits", output_logits.shape) # batch-size, sequence-len, 1, vocab
-        print("output_full_logits", output_full_logits.shape) # batch-size, sequence-len, 1, vocab
+        print("output_logits", output["logits"].shape) # batch-size, sequence-len, 1, vocab
+        print("output_full_logits", output_full["logits"].shape) # batch-size, sequence-len, 1, vocab
         output_logits = output["logits"][:, :-1, :, :][target_index: target_index + 1].detach()[action_mask[target_index: target_index + 1] == 1]
         output_full_logits = output_full["logits"][:, :-1, :, :][action_mask_full == 1]
         kl_per_token = F.kl_div(
