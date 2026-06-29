@@ -271,19 +271,17 @@ class ActorPPOTrainer(ABC):
             mm_inputs = merge_mm_train_inputs(experience.mm_train_inputs, sequences.device)
 
         # actor loss on proxy contexts, no ring attention, no gradient checkpointing
-        self.actor.gradient_checkpointing_disable()
         action_log_probs, output = self.actor(
             sequences,
             action_mask,
             attention_mask=attention_mask,
             return_output=True,
             allgather_logits=False,
-            ring_attn_group=self.strategy.ring_attn_group,
+            ring_attn_group=None,
             packed_seq_lens=None,
             return_entropy=self.args.actor.entropy_coef is not None,
             **mm_inputs,
         )
-        self.actor.gradient_checkpointing_enable()
 
         # loss function
         actor_loss, clip_ratio, ppo_kl, vllm_kl = self.actor_loss_fn(
@@ -349,7 +347,7 @@ class ActorPPOTrainer(ABC):
         kd_loss = log_ratio.mean()
         experience.info["kd_loss"] = kd_loss.detach()
 
-        # # this requires a lot GPU memory
+        # # this requires extensive GPU memory
         # # per-token KL divergence with logits (allgather_logits needs to be True for both actors)
         # self.actor.gradient_checkpointing_enable()
         # _, output_full = self.actor(
