@@ -326,7 +326,7 @@ class ActorPPOTrainer(ABC):
         action_mask_full = experience.action_mask_full[target_index: target_index + 1].to(device)
 
         # Monte Carlo approximation with log-probs (allgather_logits needs to be False for both actors)
-        self.actor.gradient_checkpointing_enable()
+        # self.actor.gradient_checkpointing_enable()
         action_log_probs_full, _ = self.actor(
             sequences_full,
             action_mask_full,
@@ -338,7 +338,7 @@ class ActorPPOTrainer(ABC):
             return_entropy=self.args.actor.entropy_coef is not None,
             **mm_inputs,
         )
-        self.actor.gradient_checkpointing_disable()
+        # self.actor.gradient_checkpointing_disable()
         # print("action_log_probs", action_log_probs.shape) # batch-size, sequence-len - 1
         # print("action_log_probs_full", action_log_probs_full.shape) # batch-size, sequence-len - 1
         # print("action_mask", action_mask.shape) # batch-size, sequence-len - 1
