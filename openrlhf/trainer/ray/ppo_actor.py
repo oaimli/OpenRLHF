@@ -277,7 +277,7 @@ class ActorPPOTrainer(ABC):
             attention_mask=attention_mask,
             return_output=True,
             allgather_logits=False,
-            ring_attn_group=None,
+            ring_attn_group=self.strategy.ring_attn_group,
             packed_seq_lens=None,
             return_entropy=self.args.actor.entropy_coef is not None,
             **mm_inputs,
