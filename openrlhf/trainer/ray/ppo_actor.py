@@ -260,6 +260,7 @@ class ActorPPOTrainer(ABC):
         old_action_log_probs = experience.action_log_probs
         advantages = experience.advantages
         base_action_log_probs = experience.base_action_log_probs
+        print("advantages", advantages.shape) # (batch-size, )
 
         # VLM: merge pre-processed multimodal inputs for training forward
         mm_inputs = {}
@@ -339,10 +340,10 @@ class ActorPPOTrainer(ABC):
             return_entropy=self.args.actor.entropy_coef is not None,
             **mm_inputs,
         )
-        print("action_log_probs", action_log_probs.shape) # batch-size, sequence-len - 1
-        print("action_log_probs_full", action_log_probs_full.shape) # batch-size, sequence-len - 1
-        print("action_mask", action_mask.shape) # batch-size, sequence-len - 1
-        print("action_mask_full", action_mask_full.shape) # batch-size, sequence-len - 1
+        print("action_log_probs", action_log_probs.shape) # (batch-size, sequence-len - 1)
+        print("action_log_probs_full", action_log_probs_full.shape) # (batch-size, sequence-len - 1)
+        print("action_mask", action_mask.shape) # (batch-size, sequence-len - 1)
+        print("action_mask_full", action_mask_full.shape) # (batch-size, sequence-len - 1)
         log_ratio = action_log_probs[target_index: target_index + 1].detach()[action_mask[target_index: target_index + 1] == 1] - action_log_probs_full[action_mask_full == 1]
         kd_loss = log_ratio.mean()
         experience.info["kd_loss"] = kd_loss.detach()
@@ -360,13 +361,13 @@ class ActorPPOTrainer(ABC):
         #     return_entropy=self.args.actor.entropy_coef is not None,
         #     **mm_inputs,
         # )
-        # print("output_logits", output["logits"].shape) # batch-size, sequence-len, 1, vocab
-        # print("output_full_logits", output_full["logits"].shape) # batch-size, sequence-len, 1, vocab
+        # print("output_logits", output["logits"].shape) # (batch-size, sequence-len, 1, vocab)
+        # print("output_full_logits", output_full["logits"].shape) # (batch-size, sequence-len, 1, vocab)
         # with torch.no_grad():
         #     output_logits = output["logits"].squeeze(2)[target_index: target_index + 1, :-1, :][action_mask[target_index: target_index + 1] == 1].to(torch.bfloat16)
         # output_full_logits = output_full["logits"].squeeze(2)[:, :-1, :][action_mask_full == 1].to(torch.bfloat16)
-        # print("output_logits", output_logits.shape) # 1, response-len, vocab
-        # print("output_full_logits", output_full_logits.shape) # 1, response-len, vocab
+        # print("output_logits", output_logits.shape) # (1, response-len, vocab)
+        # print("output_full_logits", output_full_logits.shape) # (1, response-len, vocab)
         # kd_loss = F.kl_div(
         #     F.log_softmax(output_full_logits, dim=-1),
         #     F.log_softmax(output_logits, dim=-1),
