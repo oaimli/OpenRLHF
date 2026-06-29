@@ -283,7 +283,7 @@ class ActorPPOTrainer(ABC):
             return_entropy=self.args.actor.entropy_coef is not None,
             **mm_inputs,
         )
-        self.actor.gradient_checkpointing_disable()
+        self.actor.gradient_checkpointing_enable()
 
         # loss function
         actor_loss, clip_ratio, ppo_kl, vllm_kl = self.actor_loss_fn(
