@@ -326,7 +326,6 @@ class ActorPPOTrainer(ABC):
         action_mask_full = experience.action_mask_full[target_index: target_index + 1].to(device)
 
         # Monte Carlo approximation with log-probs (allgather_logits needs to be False for both actors)
-        # self.actor.gradient_checkpointing_enable()
         action_log_probs_full, _ = self.actor(
             sequences_full,
             action_mask_full,
@@ -338,7 +337,6 @@ class ActorPPOTrainer(ABC):
             return_entropy=self.args.actor.entropy_coef is not None,
             **mm_inputs,
         )
-        # self.actor.gradient_checkpointing_disable()
         # print("action_log_probs", action_log_probs.shape) # batch-size, sequence-len - 1
         # print("action_log_probs_full", action_log_probs_full.shape) # batch-size, sequence-len - 1
         # print("action_mask", action_mask.shape) # batch-size, sequence-len - 1
@@ -349,7 +347,6 @@ class ActorPPOTrainer(ABC):
 
         # # this requires extensive GPU memory
         # # per-token KL divergence with logits (allgather_logits needs to be True for both actors)
-        # self.actor.gradient_checkpointing_enable()
         # _, output_full = self.actor(
         #     sequences_full,
         #     action_mask_full,
@@ -361,7 +358,6 @@ class ActorPPOTrainer(ABC):
         #     return_entropy=self.args.actor.entropy_coef is not None,
         #     **mm_inputs,
         # )
-        # self.actor.gradient_checkpointing_disable()
         # print("output_logits", output["logits"].shape) # batch-size, sequence-len, 1, vocab
         # print("output_full_logits", output_full["logits"].shape) # batch-size, sequence-len, 1, vocab
         # with torch.no_grad():
