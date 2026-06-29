@@ -175,7 +175,7 @@ class Experience:
         for field in field_names:
             values = [getattr(e, field) for e in experiences_list]
             # Use pad_token_id for sequences field, 0 for others
-            pad_value = pad_token_id if field == "sequences" else 0
+            pad_value = pad_token_id if field.startswith("sequences") else 0
             result[field] = Experience._merge_item(values, pad_value)
 
         return Experience(**result)

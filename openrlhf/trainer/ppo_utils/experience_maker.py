@@ -79,7 +79,7 @@ class RemoteExperienceMaker:
     @torch.no_grad()
     def make_experience_batch(self, rollout_samples) -> List[Experience]:
         """
-        Make a list of experience with the micro_rollout_batch_size.
+        Make a list of experience with the rollout.micro_batch_size.
 
         This method will first calculate the response sequences and rewards for the given prompts.
         Then, if we need certain processing for the rewards or do certain filtering, we can process the rollout as a whole.
