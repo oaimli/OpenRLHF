@@ -172,7 +172,7 @@ class Experience:
         result = {}
 
         # Merge all fields
-        print(field_names)
+        # print(field_names)
         for field in field_names:
             values = [getattr(e, field) for e in experiences_list]
             # Use pad_token_id for sequences and sequences_full field, 0 for others
