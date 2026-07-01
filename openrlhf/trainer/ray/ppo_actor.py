@@ -253,6 +253,7 @@ class ActorPPOTrainer(ABC):
     def training_step(self, experience: Experience, kl_ctl: float, step: int) -> Dict[str, float]:
         self.actor.train()
 
+        print("labels", experience.labels)
         scores = experience.scores
         sequences = experience.sequences
         action_mask = experience.action_mask
