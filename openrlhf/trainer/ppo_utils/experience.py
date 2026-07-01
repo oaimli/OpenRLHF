@@ -267,6 +267,8 @@ def remove_padding_in_sequences(items: List[Experience]) -> List[Experience]:
             value = getattr(item, f.name)
             if isinstance(value, torch.Tensor) and Experience.is_step_tensor_field(f.name):
                 setattr(item, f.name, value[:right_pad])
+        
+        assert item.action_mask.sum() == item.action_mask_full.sum(), f"mask mismatch in remove_padding_in_sequences: {item.action_mask.sum()} vs {item.action_mask_full.sum()}"
 
     return items
 
