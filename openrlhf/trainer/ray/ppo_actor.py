@@ -345,8 +345,8 @@ class ActorPPOTrainer(ABC):
         print("action_log_probs_full", action_log_probs_full.shape) # (1, sequence-len - 1)
         print("action_mask", action_mask.shape) # (batch-size, sequence-len - 1)
         print("action_mask_full", action_mask_full.shape) # (1, sequence-len - 1)
-        print("tmp-a", action_log_probs[target_index: target_index + 1].detach()[action_mask[target_index: target_index + 1] == 1].shape)
-        print("tmp-b", action_log_probs_full[action_mask_full == 1].shape)
+        print("tmp-a", action_log_probs[target_index: target_index + 1].detach()[action_mask[target_index: target_index + 1] == 1].shape, action_mask[target_index: target_index + 1].sum())
+        print("tmp-b", action_log_probs_full[action_mask_full == 1].shape, action_mask_full.sum())
         log_ratio = action_log_probs[target_index: target_index + 1].detach()[action_mask[target_index: target_index + 1] == 1] - action_log_probs_full[action_mask_full == 1]
         kd_loss = log_ratio.mean()
         experience.info["kd_loss"] = kd_loss.detach()
