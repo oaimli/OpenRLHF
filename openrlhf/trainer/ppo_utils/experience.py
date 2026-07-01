@@ -215,7 +215,9 @@ def split_experience_batch(experience: Experience) -> List[Experience]:
                 kwargs[f.name] = d
             elif isinstance(value, list):
                 kwargs[f.name] = [value[i]] if len(value) == batch_size else value
-        items.append(Experience(**kwargs))
+        tmp = Experience(**kwargs)
+        assert tmp.action_mask.sum() == tmp.action_mask_full.sum(), f"mask mismatch in split_experience_batch: {tmp.action_mask.sum()} vs {tmp.action_mask_full.sum()}"
+        items.append(tmp)
 
     return items
 
