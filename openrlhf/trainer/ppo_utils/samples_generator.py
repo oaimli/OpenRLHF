@@ -318,6 +318,8 @@ class SamplesGenerator:
         # There is no logprob for the first token
         action_mask_full = action_mask_full[1:truncate_length].to("cpu")
 
+        assert action_mask.sum() == action_mask_full.sum(), f"mask mismatch in response_into_experience: {action_mask.sum()} vs {action_mask_full.sum()}"
+
         # sequences_full, attention_mask_full and action_mask_full are for the full long context,
         # while other output information is for the current prompt which is full long for evaluation and short proxy during training
         return Experience(
