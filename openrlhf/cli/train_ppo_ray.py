@@ -374,7 +374,7 @@ if __name__ == "__main__":
     parser.add_argument("--critic.value_clip", type=float, default=0.5, help="PPO value clip range")
     parser.add_argument("--algo.advantage.lambd", type=float, default=1, help="PPO GAE lambd")
     parser.add_argument("--algo.advantage.gamma", type=float, default=1, help="PPO GAE gamma")
-    parser.add_argument("--train.micro_batch_size", type=int, default=1, help="batch size per GPU")
+    parser.add_argument("--train.micro_batch_size", type=int, default=8, help="batch size per GPU for training, needs to be equal to n_samples_per_prompt to support distillation")
     parser.add_argument("--train.batch_size", type=int, default=128, help="Global training batch size")
     parser.add_argument(
         "--reward.normalize_enable", action="store_true", default=False, help="Enable Reward Normalization"
@@ -598,6 +598,8 @@ if __name__ == "__main__":
         assert (
             args.rollout.n_samples_per_prompt > 1
         ), f"{args.algo.advantage.estimator} requires n_samples_per_prompt > 1"
+    
+    assert (args.train.micro_batch_size == args.rollout.n_samples_per_prompt), "--train.micro_batch_size needs to be equal to --rollout.n_samples_per_prompt to support distillation"
 
     # VLM constraints: critic and packing_samples are not supported
     if args.data.max_images_per_prompt > 0:
