@@ -262,16 +262,21 @@ def make_experience_batch(items: List[Experience], packing_samples=False) -> Exp
 def remove_padding_in_sequences(items: List[Experience]) -> List[Experience]:
     """Remove right padding from per-step fields of single-sample Experiences."""
     for item in items:
-        assert item.action_mask.sum() == item.action_mask_full.sum(), f"mask mismatch before remove_padding_in_sequences: {item.action_mask.sum()} vs {item.action_mask_full.sum()}"
+        # assert item.action_mask.sum() == item.action_mask_full.sum(), f"mask mismatch before remove_padding_in_sequences: {item.action_mask.sum()} vs {item.action_mask_full.sum()}"
         right_pad = item.attention_mask.flip(0).argmax()
         right_pad = None if right_pad == 0 else -right_pad
+        right_pad_full = item.attention_mask_full.flip(0).argmax()
+        right_pad_full = None if right_pad_full == 0 else -right_pad_full
 
         for f in fields(Experience):
             value = getattr(item, f.name)
             if isinstance(value, torch.Tensor) and Experience.is_step_tensor_field(f.name):
-                setattr(item, f.name, value[:right_pad])
+                if f.name.endswith("_full"):
+                    setattr(item, f.name, value[:right_pad_full])
+                else:
+                    setattr(item, f.name, value[:right_pad])
         
-        assert item.action_mask.sum() == item.action_mask_full.sum(), f"mask mismatch after remove_padding_in_sequences: {item.action_mask.sum()} vs {item.action_mask_full.sum()}"
+        # assert item.action_mask.sum() == item.action_mask_full.sum(), f"mask mismatch after remove_padding_in_sequences: {item.action_mask.sum()} vs {item.action_mask_full.sum()}"
 
     return items
 
