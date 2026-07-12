@@ -216,12 +216,12 @@ class BasePPOTrainer(ABC):
         experiences = self.experience_maker.make_experience_batch(rollout_samples)
         make_experience_time = time.time() - t0
 
-        # Peek at the first decoded sample for quick sanity check.
-        sample0 = [
-            self.tokenizer.decode(experiences[0].sequences[0].unsqueeze(0), skip_special_tokens=True)[0],
-            experiences[0].info["reward"][0].item(),
-        ]
-        logger.info(f"Sample: {sample0}")
+        # # Peek at the first decoded sample for quick sanity check.
+        # sample0 = [
+        #     self.tokenizer.decode(experiences[0].sequences[0].unsqueeze(0), skip_special_tokens=True)[0],
+        #     experiences[0].info["reward"][0].item(),
+        # ]
+        # logger.info(f"Sample: {sample0}")
 
         # Compute ground-truth rollout stats BEFORE dynamic batch splitting
         rollout_stats = self._compute_rollout_stats(experiences)
@@ -260,7 +260,7 @@ class BasePPOTrainer(ABC):
         # Merge rollout stats (ground-truth, pre-dynamic-batch)
         status.update(rollout_stats)
 
-        status["generated_samples"] = sample0
+        # status["generated_samples"] = sample0
         return status, global_step + 1
 
     def ppo_train(self, global_steps: int) -> Dict:
