@@ -322,9 +322,9 @@ class ActorPPOTrainer(ABC):
         device = sequences.device
         target_index = int(torch.argmax(scores.view(-1)).item())
         if self.args.algo.distil.adaptive_kd:
-            kd_coef = scores.view(-1)[target_index]
+            kd_coef = scores.view(-1)[target_index] * 0.1
         else:
-            kd_coef = self.args.algo.distil.kd_coef
+            kd_coef = self.args.algo.distil.kd_coef * 0.1
         sequences_full = experience.sequences_full[target_index: target_index + 1].to(device)
         attention_mask_full = experience.attention_mask_full[target_index: target_index + 1].to(device)
         action_mask_full = experience.action_mask_full[target_index: target_index + 1].to(device)
