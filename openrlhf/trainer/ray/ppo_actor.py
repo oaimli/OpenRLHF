@@ -318,62 +318,62 @@ class ActorPPOTrainer(ABC):
         else:
             kl_loss = 0
         
-        # knowledge distillation loss, with ring attention and gradient checkpointing
-        device = sequences.device
-        target_index = int(torch.argmax(scores.view(-1)).item())
-        sequences_full = experience.sequences_full[target_index: target_index + 1].to(device)
-        attention_mask_full = experience.attention_mask_full[target_index: target_index + 1].to(device)
-        action_mask_full = experience.action_mask_full[target_index: target_index + 1].to(device)
-
-        # Monte Carlo approximation with log-probs (allgather_logits needs to be False for both actors)
-        action_log_probs_full, _ = self.actor(
-            sequences_full,
-            action_mask_full,
-            attention_mask=attention_mask_full,
-            return_output=True,
-            allgather_logits=False,
-            ring_attn_group=self.strategy.ring_attn_group,
-            packed_seq_lens=None,
-            return_entropy=self.args.actor.entropy_coef is not None,
-            **mm_inputs,
-        )
-        # print("action_log_probs", action_log_probs.shape) # (train.micro_batch_size, sequence-len - 1)
-        # print("action_log_probs_full", action_log_probs_full.shape) # (1, sequence-len - 1)
-        # print("action_mask", action_mask.shape) # (train.micro_batch_size, sequence-len - 1)
-        # print("action_mask_full", action_mask_full.shape) # (1, sequence-len - 1)
-        # assert action_mask[target_index: target_index + 1].sum() == action_mask_full.sum(), f"mask mismatch in ppo_train: {action_mask[target_index].sum()} vs {action_mask_full.sum()}"
-        log_ratio = action_log_probs[target_index: target_index + 1].detach()[action_mask[target_index: target_index + 1] == 1] - action_log_probs_full[action_mask_full == 1]
-        kd_loss = log_ratio.mean()
-        experience.info["kd_loss"] = kd_loss.detach()
-
-        # # this requires extensive GPU memory
-        # # per-token KL divergence with logits (allgather_logits needs to be True for both actors)
-        # _, output_full = self.actor(
-        #     sequences_full,
-        #     action_mask_full,
-        #     attention_mask=attention_mask_full,
-        #     return_output=True,
-        #     allgather_logits=True,
-        #     ring_attn_group=self.strategy.ring_attn_group,
-        #     packed_seq_lens=None,
-        #     return_entropy=self.args.actor.entropy_coef is not None,
-        #     **mm_inputs,
-        # )
-        # print("output_logits", output["logits"].shape) # (train.micro_batch_size, sequence-len, 1, vocab)
-        # print("output_full_logits", output_full["logits"].shape) # (train.micro_batch_size, sequence-len, 1, vocab)
-        # with torch.no_grad():
-        #     output_logits = output["logits"].squeeze(2)[target_index: target_index + 1, :-1, :][action_mask[target_index: target_index + 1] == 1].to(torch.bfloat16)
-        # output_full_logits = output_full["logits"].squeeze(2)[:, :-1, :][action_mask_full == 1].to(torch.bfloat16)
-        # print("output_logits", output_logits.shape) # (1, response-len, vocab)
-        # print("output_full_logits", output_full_logits.shape) # (1, response-len, vocab)
-        # kd_loss = F.kl_div(
-        #     F.log_softmax(output_full_logits, dim=-1),
-        #     F.log_softmax(output_logits, dim=-1),
-        #     log_target=True,
-        #     reduction="batchmean")
-        # experience.info["kd_loss"] = kd_loss.item()
-        
         if self.args.algo.distil.use_kd:
+            # knowledge distillation loss, with ring attention and gradient checkpointing
+            device = sequences.device
+            target_index = int(torch.argmax(scores.view(-1)).item())
+            sequences_full = experience.sequences_full[target_index: target_index + 1].to(device)
+            attention_mask_full = experience.attention_mask_full[target_index: target_index + 1].to(device)
+            action_mask_full = experience.action_mask_full[target_index: target_index + 1].to(device)
+
+            # Monte Carlo approximation with log-probs (allgather_logits needs to be False for both actors)
+            action_log_probs_full, _ = self.actor(
+                sequences_full,
+                action_mask_full,
+                attention_mask=attention_mask_full,
+                return_output=True,
+                allgather_logits=False,
+                ring_attn_group=self.strategy.ring_attn_group,
+                packed_seq_lens=None,
+                return_entropy=self.args.actor.entropy_coef is not None,
+                **mm_inputs,
+            )
+            # print("action_log_probs", action_log_probs.shape) # (train.micro_batch_size, sequence-len - 1)
+            # print("action_log_probs_full", action_log_probs_full.shape) # (1, sequence-len - 1)
+            # print("action_mask", action_mask.shape) # (train.micro_batch_size, sequence-len - 1)
+            # print("action_mask_full", action_mask_full.shape) # (1, sequence-len - 1)
+            # assert action_mask[target_index: target_index + 1].sum() == action_mask_full.sum(), f"mask mismatch in ppo_train: {action_mask[target_index].sum()} vs {action_mask_full.sum()}"
+            log_ratio = action_log_probs[target_index: target_index + 1].detach()[action_mask[target_index: target_index + 1] == 1] - action_log_probs_full[action_mask_full == 1]
+            kd_loss = log_ratio.mean()
+            experience.info["kd_loss"] = kd_loss.detach()
+
+            # # this requires extensive GPU memory
+            # # per-token KL divergence with logits (allgather_logits needs to be True for both actors)
+            # _, output_full = self.actor(
+            #     sequences_full,
+            #     action_mask_full,
+            #     attention_mask=attention_mask_full,
+            #     return_output=True,
+            #     allgather_logits=True,
+            #     ring_attn_group=self.strategy.ring_attn_group,
+            #     packed_seq_lens=None,
+            #     return_entropy=self.args.actor.entropy_coef is not None,
+            #     **mm_inputs,
+            # )
+            # print("output_logits", output["logits"].shape) # (train.micro_batch_size, sequence-len, 1, vocab)
+            # print("output_full_logits", output_full["logits"].shape) # (train.micro_batch_size, sequence-len, 1, vocab)
+            # with torch.no_grad():
+            #     output_logits = output["logits"].squeeze(2)[target_index: target_index + 1, :-1, :][action_mask[target_index: target_index + 1] == 1].to(torch.bfloat16)
+            # output_full_logits = output_full["logits"].squeeze(2)[:, :-1, :][action_mask_full == 1].to(torch.bfloat16)
+            # print("output_logits", output_logits.shape) # (1, response-len, vocab)
+            # print("output_full_logits", output_full_logits.shape) # (1, response-len, vocab)
+            # kd_loss = F.kl_div(
+            #     F.log_softmax(output_full_logits, dim=-1),
+            #     F.log_softmax(output_logits, dim=-1),
+            #     log_target=True,
+            #     reduction="batchmean")
+            # experience.info["kd_loss"] = kd_loss.item()
+        
             if self.args.algo.distil.adaptive_kd:
                 kd_coef = scores.view(-1)[target_index] * 0.1
             else:
