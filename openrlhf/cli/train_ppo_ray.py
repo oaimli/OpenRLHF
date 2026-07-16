@@ -535,6 +535,7 @@ if __name__ == "__main__":
     parser.add_argument("--algo.distil.use_kd", action="store_true", default=False, help="Use KL-based knowledge distillation loss")
     parser.add_argument("--algo.distil.adaptive_kd", action="store_true", default=True, help="Adaptive knowledge distillation loss based on reward")
     parser.add_argument("--algo.distil.kd_coef", type=float, default=1.0, help="The KL divergence for on-policy distillation")
+    parser.add_argument("--algo.distil.kd_scaling", type=float, default=0.1, help="The scaling factor for the KL-based knowledge distillation loss")
 
     # wandb parameters
     parser.add_argument("--logger.wandb.key", type=str, default=None)

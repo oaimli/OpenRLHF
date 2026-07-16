@@ -344,6 +344,8 @@ class ActorPPOTrainer(ABC):
             # print("action_mask_full", action_mask_full.shape) # (1, sequence-len - 1)
             # assert action_mask[target_index: target_index + 1].sum() == action_mask_full.sum(), f"mask mismatch in ppo_train: {action_mask[target_index].sum()} vs {action_mask_full.sum()}"
             log_ratio = action_log_probs[target_index: target_index + 1].detach()[action_mask[target_index: target_index + 1] == 1] - action_log_probs_full[action_mask_full == 1]
+            log_ratio = (-log_ratio).exp() - 1 + log_ratio
+            log_ratio.clamp(min=-10, max=10)
             kd_loss = log_ratio.mean()
             experience.info["kd_loss"] = kd_loss.detach()
 
@@ -375,9 +377,9 @@ class ActorPPOTrainer(ABC):
             # experience.info["kd_loss"] = kd_loss.item()
         
             if self.args.algo.distil.adaptive_kd:
-                kd_coef = scores.view(-1)[target_index] * 0.1
+                kd_coef = scores.view(-1)[target_index] * self.args.algo.distil.kd_scaling
             else:
-                kd_coef = self.args.algo.distil.kd_coef * 0.1
+                kd_coef = self.args.algo.distil.kd_coef * self.args.algo.distil.kd_scaling
             loss = actor_loss + kl_loss * kl_ctl + kd_coef * kd_loss
         else:
             loss = actor_loss + kl_loss * kl_ctl
