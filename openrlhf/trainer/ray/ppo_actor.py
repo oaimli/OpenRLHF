@@ -373,15 +373,15 @@ class ActorPPOTrainer(ABC):
         #     reduction="batchmean")
         # experience.info["kd_loss"] = kd_loss.item()
         
-        if self.args.algo.distil.kd_coef == 0:
-            loss = actor_loss + kl_loss * kl_ctl
-        else:
+        if self.args.algo.distil.use_kd:
             if self.args.algo.distil.adaptive_kd:
                 kd_coef = scores.view(-1)[target_index] * 0.1
             else:
                 kd_coef = self.args.algo.distil.kd_coef * 0.1
             loss = actor_loss + kl_loss * kl_ctl + kd_coef * kd_loss
-        
+        else:
+            loss = actor_loss + kl_loss * kl_ctl
+            
         # mixtral
         if self.aux_loss:
             loss += output.aux_loss * self.args.actor.aux_loss_coef
