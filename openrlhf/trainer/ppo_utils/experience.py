@@ -49,6 +49,7 @@ class Experience:
     action_log_probs: torch.Tensor = tensor_field("step", default=None)  # (B, A-proxy) log π_θ(a|s)  current policy
     base_action_log_probs: torch.Tensor = tensor_field("step", default=None)  # (B, A-proxy) log π_ref(a|s) reference policy
     rollout_log_probs: torch.Tensor = tensor_field("step", default=None)  # (B, A-proxy) log π_old(a|s) rollout policy
+    rollout_log_probs_full: torch.Tensor = tensor_field("step", default=None)  # (B, A-full) log π_old(a|s) rollout policy
 
     # ── Value estimation ──
     values: torch.Tensor = tensor_field("step", default=None)  # (B, A-proxy) V(s)
@@ -62,14 +63,22 @@ class Experience:
     response_length: torch.Tensor = tensor_field("episode", default=None)  # (B,) number of generated tokens
     truncated: torch.Tensor = tensor_field("episode", default=None)  # (B,) whether generation was truncated
     total_length: torch.Tensor = tensor_field("episode", default=None)  # (B,) prompt + response length
+    rewards_full: torch.Tensor = tensor_field("episode", default=None)  # (B,) R, used for advantage calculation
+    scores_full: torch.Tensor = tensor_field("episode", default=None)  # (B,) binary score for dynamic sampling
+    response_length_full: torch.Tensor = tensor_field("episode", default=None)  # (B,) number of generated tokens
+    truncated_full: torch.Tensor = tensor_field("episode", default=None)  # (B,) whether generation was truncated
+    total_length_full: torch.Tensor = tensor_field("episode", default=None)  # (B,) prompt + response length
 
     # ── Metadata (not part of RL computation) ──
     index: list[int] = None
-    prompts: list[str] = field(default_factory=list)
     labels: list[str] = field(default_factory=list)
     images: list = field(default_factory=list)  # per-sample image paths/URLs for VLM (None entries for text-only)
+    prompts: list[str] = field(default_factory=list)
     mm_train_inputs: list = field(default_factory=list)  # per-sample processor outputs (pixel_values dicts) for VLM
     info: dict = field(default_factory=dict)  # per-sample metrics for logging
+    prompts_full: list[str] = field(default_factory=list)
+    mm_train_inputs_full: list = field(default_factory=list)  # per-sample processor outputs (pixel_values dicts) for VLM
+    info_full: dict = field(default_factory=dict)  # per-sample metrics for logging
 
     @classmethod
     def is_step_tensor_field(cls, name: str) -> bool:

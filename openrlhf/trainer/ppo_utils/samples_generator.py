@@ -253,6 +253,7 @@ class SamplesGenerator:
         """Turn a single vLLM response into an Experience."""
         truncate_length = generate_kwargs.get("max_len", 2048)
 
+        # Processing the tokens for the proxy prompt
         # Base rollout fields from the output.
         tokenized_observation = response["observation_tokens"].copy()
         tokenized_ranges = response["action_ranges"]
@@ -303,36 +304,66 @@ class SamplesGenerator:
             info[key] = torch.tensor([value])
         
         # Processing the tokens for the full prompt
+        # Base rollout fields from the output.
         tokenized_observation_full = response["observation_tokens_full"].copy()
-        sequences_full = torch.tensor(tokenized_observation_full, dtype=torch.long)
         tokenized_ranges_full = response["action_ranges_full"]
+        reward_val_full = response.get("reward_full", None)
+        score_val_full = response.get("scores_full", None)
+
+        sequences_full = torch.tensor(tokenized_observation_full, dtype=torch.long)
         attention_mask_full = torch.ones(len(tokenized_observation_full), dtype=torch.long)
         # Mark the action span within the concatenated tokens.
         action_mask_full = torch.zeros_like(attention_mask_full)
         for start, end in tokenized_ranges_full:
             action_mask_full[start:end] = 1
-        
+
         # Truncate everything to the configured context window.
         sequences_full = sequences_full[:truncate_length].to("cpu")
         attention_mask_full = attention_mask_full[:truncate_length].to("cpu")
         # There is no logprob for the first token
         action_mask_full = action_mask_full[1:truncate_length].to("cpu")
-
         # assert action_mask.sum() == action_mask_full.sum(), f"mask mismatch in response_into_experience: {action_mask.sum()} vs {action_mask_full.sum()}"
 
-        # sequences_full, attention_mask_full and action_mask_full are for the full long context,
-        # while other output information is for the current prompt which is full long for evaluation and short proxy during training
+        # Align rollout logprobs with the truncated action span.
+        # There is no logprob for the first token.
+        if response["rollout_log_probs_full"] is not None:
+            rollout_log_probs_full = torch.tensor(response["rollout_log_probs_full"][1:truncate_length]).to("cpu")
+        else:
+            rollout_log_probs_full = None
+
+        # Collect simple stats about lengths and clipping.
+        ones_indices_full = torch.where(action_mask_full)[0]
+        response_length_full = (ones_indices_full[-1] - ones_indices_full[0] + 1).item() if len(ones_indices_full) else 0
+        total_length_full = attention_mask_full.float().sum()
+        is_clipped_full = total_length_full >= truncate_length
+
+        # Check if response was truncated (hit max_tokens limit, finish_reason == "length")
+        is_truncated_full = response.get("truncated", False)
+
+        info_full = {
+            "response_clip_ratio": torch.tensor([is_clipped_full]),
+        }
+        if reward_val_full is not None:
+            info_full["reward_full"] = torch.tensor([reward_val_full])
+        if score_val is not None:
+            info_full["score_full"] = torch.tensor([score_val_full])
+
+        # Convert extra logs to tensors for downstream consumers.
+        extra_logs_full = response.get("extra_logs_full", {})
+        for key, value in extra_logs_full.items():
+            if isinstance(value, torch.Tensor):
+                value = value.flatten()[0].item()
+            info_full[key] = torch.tensor([value])
+
         return Experience(
+            labels=[response["label"]],
+            images=[response.get("images")],
+            # for proxy contexts
             sequences=sequences.unsqueeze(0),
             attention_mask=attention_mask.unsqueeze(0),
             action_mask=action_mask.unsqueeze(0),
             rollout_log_probs=rollout_log_probs.unsqueeze(0) if rollout_log_probs is not None else None,
-            sequences_full=sequences_full.unsqueeze(0),
-            attention_mask_full=attention_mask_full.unsqueeze(0),
-            action_mask_full=action_mask_full.unsqueeze(0),
             prompts=[response["prompt"]],
-            labels=[response["label"]],
-            images=[response.get("images")],
             mm_train_inputs=[response.get("mm_train_inputs")],
             rewards=torch.tensor([reward_val]) if reward_val is not None else None,
             scores=torch.tensor([score_val]) if score_val is not None else None,
@@ -340,4 +371,17 @@ class SamplesGenerator:
             truncated=torch.tensor([is_truncated]),
             total_length=torch.tensor([total_length]),
             info=info,
+            # for full contexts
+            sequences_full=sequences_full.unsqueeze(0),
+            attention_mask_full=attention_mask_full.unsqueeze(0),
+            action_mask_full=action_mask_full.unsqueeze(0),
+            rollout_log_probs_full=rollout_log_probs_full.unsqueeze(0) if rollout_log_probs_full is not None else None,
+            prompts_full=[response["prompt_full"]],
+            mm_train_inputs_full=[response.get("mm_train_inputs_full")],
+            rewards_full=torch.tensor([reward_val_full]) if reward_val_full is not None else None,
+            scores_full=torch.tensor([score_val_full]) if score_val_full is not None else None,
+            response_length_full=torch.tensor([response_length_full]),
+            truncated_full=torch.tensor([is_truncated_full]),
+            total_length_full=torch.tensor([total_length_full]),
+            info_full=info_full,
         )

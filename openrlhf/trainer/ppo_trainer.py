@@ -88,26 +88,38 @@ def compute_eval_metrics(eval_dataloader, samples_list, n_samples_per_prompt):
         return {}
 
     prompt_full_to_datasource = {}
-    for datasources, _, prompts_full, _, _images in eval_dataloader:
-        for prompt_full, datasource in zip(prompts_full, datasources):
+    prompt_proxy_to_datasource = {}
+    for datasources, prompts_proxy, prompts_full, _, _images in eval_dataloader:
+        for prompt_full, prompt_proxy, datasource in zip(prompts_full, prompts_proxy, datasources):
             prompt_full_to_datasource[prompt_full] = datasource
+            prompt_proxy_to_datasource[prompt_proxy] = datasource
 
     # Single pass: collect prompts, rewards, response_length, truncated
     all_prompts = []
     all_rewards = []
     all_response_lengths = []
     all_truncated = []
+    all_prompts_full = []
+    all_rewards_full = []
+    all_response_lengths_full = []
+    all_truncated_full = []
     for s in samples_list:
         all_prompts.extend(s.prompts)
         all_rewards.append(s.rewards)
         all_response_lengths.append(s.response_length.item() if s.response_length is not None else None)
         all_truncated.append(s.truncated.item() if s.truncated is not None else None)
+        all_prompts_full.extend(s.prompts_full)
+        all_rewards_full.append(s.rewards_full)
+        all_response_lengths_full.append(s.response_length_full.item() if s.response_length_full is not None else None)
+        all_truncated_full.append(s.truncated_full.item() if s.truncated_full is not None else None)
+
 
     rewards = torch.tensor(all_rewards).reshape(-1, n_samples_per_prompt)
+    rewards_full = torch.tensor(all_rewards_full).reshape(-1, n_samples_per_prompt)
 
     metrics = {}
     for i in range(len(all_prompts) // n_samples_per_prompt):
-        ds = prompt_full_to_datasource.get(all_prompts[i * n_samples_per_prompt], "unknown")
+        ds = prompt_proxy_to_datasource.get(all_prompts[i * n_samples_per_prompt], "unknown")
         if ds not in metrics:
             metrics[ds] = {f"pass{n_samples_per_prompt}": 0, "pass1": 0, "count": 0, "lengths": [], "truncated": []}
         chunk = rewards[i]
@@ -123,6 +135,24 @@ def compute_eval_metrics(eval_dataloader, samples_list, n_samples_per_prompt):
             if all_truncated[j] is not None:
                 metrics[ds]["truncated"].append(all_truncated[j])
 
+    metrics_full = {}
+    for i in range(len(all_prompts_full) // n_samples_per_prompt):
+        ds = prompt_full_to_datasource.get(all_prompts_full[i * n_samples_per_prompt], "unknown")
+        if ds not in metrics_full:
+            metrics_full[ds] = {f"pass{n_samples_per_prompt}_full": 0, "pass1_full": 0, "count_full": 0, "lengths_full": [], "truncated_full": []}
+        chunk = rewards_full[i]
+        if n_samples_per_prompt > 1:
+            metrics_full[ds][f"pass{n_samples_per_prompt}_full"] += chunk.max().float().item()
+        metrics_full[ds]["pass1_full"] += chunk.mean().float().item()
+        metrics_full[ds]["count_full"] += 1
+
+        start = i * n_samples_per_prompt
+        for j in range(start, start + n_samples_per_prompt):
+            if all_response_lengths_full[j] is not None:
+                metrics_full[ds]["lengths_full"].append(all_response_lengths_full[j])
+            if all_truncated_full[j] is not None:
+                metrics_full[ds]["truncated_full"].append(all_truncated_full[j])
+
     logs = {}
     total_lengths = []
     total_truncated = []
@@ -135,12 +165,29 @@ def compute_eval_metrics(eval_dataloader, samples_list, n_samples_per_prompt):
         if m["truncated"]:
             logs[f"eval_{ds}_truncated_rate"] = sum(m["truncated"]) / len(m["truncated"])
             total_truncated.extend(m["truncated"])
-
     if total_lengths:
         logs["eval_response_length_mean"] = sum(total_lengths) / len(total_lengths)
     if total_truncated:
         logs["eval_truncated_rate"] = sum(total_truncated) / len(total_truncated)
+
+    total_lengths_full = []
+    total_truncated_full = []
+    for ds, m in metrics_full.items():
+        logs[f"eval_{ds}_pass{n_samples_per_prompt}_full"] = m[f"pass{n_samples_per_prompt}_full"] / m["count_full"]
+        logs[f"eval_{ds}_pass1_full"] = m["pass1_full"] / m["count_full"]
+        if m["lengths_full"]:
+            logs[f"eval_{ds}_response_length_mean_full"] = sum(m["lengths_full"]) / len(m["lengths_full"])
+            total_lengths_full.extend(m["lengths_full"])
+        if m["truncated_full"]:
+            logs[f"eval_{ds}_truncated_rate_full"] = sum(m["truncated_full"]) / len(m["truncated_full"])
+            total_truncated_full.extend(m["truncated_full"])
+    if total_lengths_full:
+        logs["eval_response_length_mean_full"] = sum(total_lengths_full) / len(total_lengths_full)
+    if total_truncated_full:
+        logs["eval_truncated_rate_full"] = sum(total_truncated_full) / len(total_truncated_full)
+    
     logs["eval_num_samples"] = float(len(all_prompts))
+    logs["eval_num_samples_full"] = float(len(all_prompts_full))
 
     return logs
 

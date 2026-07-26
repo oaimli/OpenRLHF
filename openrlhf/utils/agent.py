@@ -200,17 +200,17 @@ class SingleTurnAgentExecutor(AgentExecutorBase):
             self.reward_func = reward_module.reward_func
 
     async def execute(self, flag, prompt_proxy, prompt_full, label, sampling_params, max_length: int, hf_tokenizer, llm_engine, images=None):
-        prompt_working = prompt_full if flag == "eval" else prompt_proxy
-        print("prompt_working chars", len(prompt_working), "prompt_full chars", len(prompt_full), "prompt_proxy chars", len(prompt_proxy))
+        print("prompt_full chars", len(prompt_full), "prompt_proxy chars", len(prompt_proxy))
+
         # Tokenize — for VLM the processor inserts image tokens and returns pixel tensors.
         pil_images = []
         mm_train_inputs = None
         if images and hasattr(hf_tokenizer, "image_processor"):
             from openrlhf.utils.vlm_utils import process_prompt_with_images
 
-            prompt_token_ids, mm_train_inputs, pil_images = process_prompt_with_images(hf_tokenizer, prompt_working, images)
+            prompt_token_ids, mm_train_inputs, pil_images = process_prompt_with_images(hf_tokenizer, prompt_proxy, images)
         else:
-            prompt_token_ids = hf_tokenizer(text=prompt_working, add_special_tokens=False, return_tensors="pt")["input_ids"][
+            prompt_token_ids = hf_tokenizer(text=prompt_proxy, add_special_tokens=False, return_tensors="pt")["input_ids"][
                 0
             ].tolist()
 
@@ -261,44 +261,110 @@ class SingleTurnAgentExecutor(AgentExecutorBase):
                 rollout_log_probs.append(token_logprob.logprob if token_logprob is not None else 0.0)
         
         if flag == "eval":
-            observation_token_ids_full = observation_token_ids
-            action_ranges_full = action_ranges
+            # when evaluation, testing on full contexts requires generation from full contexts
+            pil_images_full = []
+            mm_train_inputs_full = None
+            if images and hasattr(hf_tokenizer, "image_processor"):
+                from openrlhf.utils.vlm_utils import process_prompt_with_images
+    
+                prompt_token_ids_full, mm_train_inputs_full, pil_images_full = process_prompt_with_images(hf_tokenizer, prompt_full, images)
+            else:
+                prompt_token_ids_full = hf_tokenizer(text=prompt_full, add_special_tokens=False, return_tensors="pt")["input_ids"][
+                    0
+                ].tolist()
+    
+            # Compute dynamic max_tokens when not explicitly set (prompt + response share max_length budget)
+            effective_params = sampling_params
+            if sampling_params.max_tokens is None:
+                effective_params = deepcopy(sampling_params)
+                effective_params.max_tokens = max(1, max_length - len(prompt_token_ids_full))
+    
+            # Truncate prompt if it's too long to leave room for generation
+            max_prompt_length_full = max_length - effective_params.max_tokens
+            if len(prompt_token_ids_full) > max_prompt_length_full:
+                if pil_images_full:
+                    raise ValueError(
+                        f"VLM prompt length ({len(prompt_token_ids_full)}) exceeds max_prompt_length ({max_prompt_length_full}). "
+                        f"Truncating VLM prompts would break image token alignment with pixel_values. "
+                        f"Please increase --max_len or decrease --max_new_tokens."
+                    )
+                logger.warning(
+                    f"Prompt length ({len(prompt_token_ids_full)}) exceeds max_prompt_length ({max_prompt_length_full}). "
+                    f"Truncating to fit within max_length ({max_length}) with max_tokens ({effective_params.max_tokens})."
+                )
+                prompt_token_ids_full = prompt_token_ids_full[-max_prompt_length_full:]
+    
+            # Reuse already-loaded PIL images for vLLM generation.
+            mm_data_full = {"image": pil_images_full} if pil_images_full else None
+    
+            # Generate one continuation from the engine.
+            request_output_full = await llm_engine.generate(
+                prompt_token_ids_full, deepcopy(effective_params), multi_modal_data=mm_data_full
+            )
+            generation_output_full = request_output_full.outputs[0]
+            action_token_ids_full = generation_output_full.token_ids
+    
+            # Check if response was truncated (hit max_tokens length limit)
+            is_truncated_full = generation_output_full.finish_reason == "length"
+    
+            # Stitch prompt + action together for downstream consumers.
+            observation_token_ids_full = prompt_token_ids_full + action_token_ids_full
+            action_ranges_full = [(len(prompt_token_ids_full), len(observation_token_ids_full))]
+    
+            # Calculate rollout log probs.
+            rollout_log_probs_full = None
+            if sampling_params.logprobs is not None and generation_output_full.logprobs is not None:
+                rollout_log_probs_full = [0.0] * len(prompt_token_ids_full)
+                for token_id, logprob_dict in zip(action_token_ids_full, generation_output_full.logprobs):
+                    token_logprob = logprob_dict.get(token_id)
+                    rollout_log_probs_full.append(token_logprob.logprob if token_logprob is not None else 0.0)
         else:
+            # when training, kd loss calculation requires observation_token_ids_full and action_ranges_full
+            mm_train_inputs_full = None
             prompt_full_token_ids = hf_tokenizer(text=prompt_full, add_special_tokens=False, return_tensors="pt")["input_ids"][0].tolist()
             prompt_full_token_ids = prompt_full_token_ids[-max_prompt_length:]
             observation_token_ids_full = prompt_full_token_ids + action_token_ids
             action_ranges_full = [(len(prompt_full_token_ids), len(observation_token_ids_full))]
+            rollout_log_probs_full = None
+            is_truncated_full = None
 
         # Store the final response.
         output = {
-            # Original prompt/label/images are echoed for convenience.
             "flag": flag,
-            "prompt": prompt_working,
             "label": label,
             "images": images,
+            # for proxy_context
+            "prompt": prompt_proxy,
             "mm_train_inputs": mm_train_inputs,
-            # Token/text observations and action span.
             "observation_tokens": observation_token_ids,
             "action_ranges": action_ranges,
             "rollout_log_probs": rollout_log_probs,
-            "observation_tokens_full": observation_token_ids_full,
-            "action_ranges_full": action_ranges_full,
-            # Truncation flag (finish_reason == "length")
             "truncated": is_truncated,
-            # Reward-related fields (filled by reward/agent variants).
             "reward": None,
             "scores": None,
             "extra_logs": {},
+            # for full context
+            "prompt_full": prompt_full,
+            "mm_train_inputs_full": mm_train_inputs_full,
+            "observation_tokens_full": observation_token_ids_full,
+            "action_ranges_full": action_ranges_full,
+            "rollout_log_probs_full": rollout_log_probs_full,
+            "truncated_full": is_truncated_full,
+            "reward_full": None,
+            "scores_full": None,
+            "extra_logs_full": {},
         }
 
         # Compute reward/score after generation.
         if self.reward_endpoints:
             try:
+                # for proxy contexts
                 query = hf_tokenizer.decode(output["observation_tokens"], skip_special_tokens=False)
                 if self.reward_func:
-                    rewards_info_list = await self._fetch_rewards_via_func([query], [prompt_working], [label])
+                    rewards_info_list = await self._fetch_rewards_via_func([query], [prompt_proxy], [label])
                 else:
-                    rewards_info_list = await self._fetch_rewards_via_http([query], [prompt_working], [label])
+                    rewards_info_list = await self._fetch_rewards_via_http([query], [prompt_proxy], [label])
+                
                 rewards_info = rewards_info_list[0] if rewards_info_list else None
                 if rewards_info:
                     score_value = rewards_info.get("scores")
@@ -309,6 +375,24 @@ class SingleTurnAgentExecutor(AgentExecutorBase):
                         scores=score_value,
                         extra_logs=rewards_info.get("extra_logs") or {},
                     )
+                # for full contexts
+                if flag == "eval":
+                    query = hf_tokenizer.decode(output["observation_tokens_full"], skip_special_tokens=False)
+                    if self.reward_func:
+                        rewards_info_list = await self._fetch_rewards_via_func([query], [prompt_full], [label])
+                    else:
+                        rewards_info_list = await self._fetch_rewards_via_http([query], [prompt_full], [label])
+                    
+                    rewards_info = rewards_info_list[0] if rewards_info_list else None
+                    if rewards_info:
+                        score_value = rewards_info.get("scores")
+                        if score_value is None:
+                            score_value = rewards_info.get("rewards")
+                        output.update(
+                            reward_full=rewards_info.get("rewards"),
+                            scores_full=score_value,
+                            extra_logs_full=rewards_info.get("extra_logs") or {},
+                        )
             except Exception as e:
                 logger.info(f"[SingleTurnExecutor] Failed to fetch reward from remote RM: {e}")
 
