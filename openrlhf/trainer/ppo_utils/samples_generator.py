@@ -345,7 +345,7 @@ class SamplesGenerator:
         }
         if reward_val_full is not None:
             info_full["reward_full"] = torch.tensor([reward_val_full])
-        if score_val is not None:
+        if score_val_full is not None:
             info_full["score_full"] = torch.tensor([score_val_full])
 
         # Convert extra logs to tensors for downstream consumers.
