@@ -533,8 +533,8 @@ if __name__ == "__main__":
 
     # Knowledge distillation
     parser.add_argument("--algo.distil.use_kd", action="store_true", default=False, help="Use KL-based knowledge distillation loss")
-    parser.add_argument("--algo.distil.adaptive_kd", action="store_true", default=True, help="Adaptive knowledge distillation loss based on reward")
-    parser.add_argument("--algo.distil.kd_coef", type=float, default=1.0, help="The KL divergence for on-policy distillation")
+    parser.add_argument("--algo.distil.adaptive", action="store_true", default=False, help="Adaptive knowledge distillation loss based on reward")
+    parser.add_argument("--algo.distil.target_score", type=float, default=2.0, help="The target score for distillation examples")
     parser.add_argument("--algo.distil.kd_scaling", type=float, default=0.1, help="The scaling factor for the KL-based knowledge distillation loss")
 
     # wandb parameters

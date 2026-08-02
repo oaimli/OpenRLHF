@@ -317,11 +317,18 @@ class ActorPPOTrainer(ABC):
             experience.info["logprobs_diff"] = logprobs_diff.detach()
         else:
             kl_loss = 0
-        
+
+        target_index = int(torch.argmax(scores.view(-1)).item())
+        use_distillation = False
         if self.args.algo.distil.use_kd:
+            if self.args.algo.distil.adaptive and scores.view(-1)[target_index] == self.args.algo.distil.target_score:
+                use_distillation = True
+            if not self.args.algo.distil.adaptive:
+                use_distillation = True
+        
+        if use_distillation:
             # knowledge distillation loss, with ring attention and gradient checkpointing
             device = sequences.device
-            target_index = int(torch.argmax(scores.view(-1)).item())
             sequences_full = experience.sequences_full[target_index: target_index + 1].to(device)
             attention_mask_full = experience.attention_mask_full[target_index: target_index + 1].to(device)
             action_mask_full = experience.action_mask_full[target_index: target_index + 1].to(device)
@@ -375,12 +382,8 @@ class ActorPPOTrainer(ABC):
             #     log_target=True,
             #     reduction="batchmean")
             # experience.info["kd_loss"] = kd_loss.item()
-        
-            if self.args.algo.distil.adaptive_kd:
-                kd_coef = scores.view(-1)[target_index] * self.args.algo.distil.kd_scaling
-            else:
-                kd_coef = self.args.algo.distil.kd_coef * self.args.algo.distil.kd_scaling
-            loss = actor_loss + kl_loss * kl_ctl + kd_coef * kd_loss
+
+            loss = actor_loss + kl_loss * kl_ctl + self.args.algo.distil.kd_scaling * kd_loss
         else:
             loss = actor_loss + kl_loss * kl_ctl
             
