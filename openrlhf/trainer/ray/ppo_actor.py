@@ -321,7 +321,7 @@ class ActorPPOTrainer(ABC):
         target_index = int(torch.argmax(scores.view(-1)).item())
         use_distillation = False
         if self.args.algo.distil.use_kd:
-            if self.args.algo.distil.adaptive and scores.view(-1)[target_index] == self.args.algo.distil.target_score:
+            if self.args.algo.distil.adaptive and scores.view(-1)[target_index] >= self.args.algo.distil.target_score:
                 use_distillation = True
             if not self.args.algo.distil.adaptive:
                 use_distillation = True
