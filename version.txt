@@ -1,1 +1,1 @@
-0.9.1, with customization for Gemma3
+0.9.1, with customization for GRPO with Gemma3
